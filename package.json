@@ -1,0 +1,45 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build --webpack",
+    "dev": "next dev",
+    "start": "next start",
+    "lint": "eslint",
+    "clean:open-next": "node scripts/clean-open-next.mjs",
+    "preview": "npm run clean:open-next && opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "npm run clean:open-next && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "build-data": "node scripts/build-processed-data.mjs",
+    "upload-data": "npm run build-data && node scripts/upload-dashboard-data.mjs",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1063.0",
+    "@opennextjs/cloudflare": "^1.19.11",
+    "hyparquet": "^1.25.1",
+    "next": "^16.2.7",
+    "papaparse": "^5.5.3",
+    "parquetjs-lite": "^0.8.7",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260608.1",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.1",
+    "tsx": "^4.22.4",
+    "typescript": "^5",
+    "wrangler": "^4.98.0"
+  }
+}
