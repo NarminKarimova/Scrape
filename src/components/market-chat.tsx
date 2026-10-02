@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MarkdownText } from "@/components/markdown-text";
 
-export type ChatProjectKey = "Bina.az" | "Markets" | "Turbo.az";
+export type ChatProjectKey = "Bina.az" | "Markets" | "Birmarket" | "Turbo.az";
 export type ChatLang = "en" | "az";
 
 export type ChatTrendPoint = {
@@ -290,9 +290,11 @@ function ToolTracePanel({
 export function MarketChat({
   context,
   disabled,
+  workspace = false,
 }: {
   context: AnalysisContext;
   disabled: boolean;
+  workspace?: boolean;
 }) {
   const baseText = TEXT[context.language] ?? TEXT.az;
   const text =
@@ -570,8 +572,10 @@ export function MarketChat({
   };
 
   const activeShell = fullscreen
-    ? "fixed inset-3 z-50 flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
-    : "rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60";
+    ? "fixed inset-3 z-50 flex flex-col rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-[#0b101a]"
+    : workspace
+      ? "bg-transparent"
+      : "rounded-[1.4rem] border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_18px_45px_rgba(15,23,42,0.035)] sm:p-6 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none";
 
   const messageAreaHeight = fullscreen
     ? "min-h-0 flex-1"
@@ -579,44 +583,52 @@ export function MarketChat({
 
   return (
     <section className={activeShell}>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+      <div className={`mb-5 flex flex-wrap items-start gap-4 ${workspace ? "justify-end" : "justify-between"}`}>
+        {!workspace && (
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-950 text-xs font-semibold text-white dark:bg-white dark:text-slate-950">
+            AI
+          </div>
+          <div>
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
             {text.title}
           </h2>
-          <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-zinc-500">
-            {text.extra} · {text.history}
+          <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+            {text.extra} <span className="text-slate-300 dark:text-slate-600">·</span> {text.history}
           </p>
+          </div>
         </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <button
             onClick={startNewChat}
             disabled={sending}
-            className="rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {text.newChat}
           </button>
           <button
             onClick={() => setFullscreen((value) => !value)}
-            className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:border-blue-400 hover:text-blue-600 dark:border-zinc-700 dark:text-zinc-300"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300"
           >
             {fullscreen ? text.exitFullscreen : text.fullscreen}
           </button>
           <button
             onClick={clearChat}
             disabled={sending || messages.length === 0}
-            className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:border-rose-400 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
           >
             {text.clear}
           </button>
-          <div className="rounded-full bg-blue-50 px-2.5 py-1.5 text-[11px] font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
-            Gemini API
+          <div className="rounded-xl bg-emerald-50 px-2.5 py-2 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            AI online
           </div>
         </div>
       </div>
 
       <div className={`grid gap-4 ${fullscreen ? "min-h-0 flex-1 xl:grid-cols-[minmax(0,1fr)_320px]" : "xl:grid-cols-[minmax(0,1fr)_280px]"}`}>
-        <div className={`flex ${messageAreaHeight} flex-col rounded-2xl border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-950`}>
+        <div className={`flex ${messageAreaHeight} flex-col rounded-2xl border border-slate-200 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-950/50`}>
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.length === 0 && (
               <div className="flex h-full min-h-60 items-center justify-center">
@@ -639,8 +651,8 @@ export function MarketChat({
                 key={message.id}
                 className={`group rounded-2xl px-3.5 py-2.5 text-sm leading-6 ${
                   message.role === "user"
-                    ? "ml-auto max-w-[85%] bg-blue-600 text-white"
-                    : "mr-auto max-w-[92%] bg-slate-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                    ? "ml-auto max-w-[85%] bg-indigo-600 text-white shadow-sm"
+                    : "mr-auto max-w-[92%] border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
                 }`}
               >
                 {message.role === "assistant" ? (
@@ -763,7 +775,7 @@ export function MarketChat({
             <button
               onClick={() => void sendMessage()}
               disabled={disabled || sending || input.trim().length === 0}
-              className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {sending
                 ? text.buttonBusy

@@ -11,6 +11,7 @@
     "preview": "npm run clean:open-next && opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "npm run clean:open-next && opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "build-data": "node scripts/build-processed-data.mjs",
+    "build-birmarket-categories": "node scripts/build-birmarket-category-map.mjs",
     "upload-data": "npm run build-data && node scripts/upload-dashboard-data.mjs",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"

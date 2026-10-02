@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BUCKET = "scrape";
+const BUCKET = process.env.R2_BUCKET_NAME ?? "scrape";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "processed");
 
 function walkFiles(dir) {

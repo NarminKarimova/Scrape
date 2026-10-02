@@ -1,14 +1,16 @@
 import {
   loadBinaPage,
+  loadBirmarketPage,
   loadMarketsPage,
   loadTurboPage,
   type BinaRow,
+  type BirmarketRow,
   type MarketsRow,
   type ProjectKey,
   type TurboRow,
 } from "@/lib/dashboard-data";
 
-type AnyRow = BinaRow | MarketsRow | TurboRow;
+type AnyRow = BinaRow | MarketsRow | BirmarketRow | TurboRow;
 
 type ToolContext = {
   project?: ProjectKey;
@@ -87,6 +89,18 @@ function normalizeSearch(value: string): string {
     .replace(/ç/g, "c");
 }
 
+function discountBandLabel(discountPercent: number): string {
+  if (discountPercent <= 0) return "No discount";
+  if (discountPercent < 10) return "Under 10%";
+  if (discountPercent < 25) return "10-24%";
+  if (discountPercent < 50) return "25-49%";
+  return "50%+";
+}
+
+function priceDigits(project: ProjectKey): number {
+  return project === "Markets" || project === "Birmarket" ? 2 : 0;
+}
+
 async function loadAllPages<T>(
   loader: (cursor: number, pageSize: number, includeMeta: boolean) => Promise<{
     rows: T[];
@@ -116,6 +130,7 @@ async function loadRows(project: ProjectKey): Promise<AnyRow[]> {
   const promise = (async (): Promise<AnyRow[]> => {
     if (project === "Bina.az") return loadAllPages<BinaRow>(loadBinaPage);
     if (project === "Markets") return loadAllPages<MarketsRow>(loadMarketsPage);
+    if (project === "Birmarket") return loadAllPages<BirmarketRow>(loadBirmarketPage);
     return loadAllPages<TurboRow>(loadTurboPage);
   })();
 
@@ -134,7 +149,7 @@ function metric(project: ProjectKey, row: AnyRow, operationType?: string): numbe
     const bina = row as BinaRow;
     return operationType === "Rent" ? bina.price : bina.pricePerM2;
   }
-  return (row as MarketsRow | TurboRow).price;
+  return (row as MarketsRow | BirmarketRow | TurboRow).price;
 }
 
 function rowDimension(project: ProjectKey, row: AnyRow, dimension: string): string {
@@ -152,6 +167,16 @@ function rowDimension(project: ProjectKey, row: AnyRow, dimension: string): stri
     return market.category;
   }
 
+  if (project === "Birmarket") {
+    const market = row as BirmarketRow;
+    if (dimension === "subcategory") return market.subcategory;
+    if (dimension === "brand") return market.brand;
+    if (dimension === "discountBand") return discountBandLabel(market.discountPercent);
+    if (dimension === "status") return market.status;
+    if (dimension === "seller") return market.seller;
+    return market.category;
+  }
+
   const turbo = row as TurboRow;
   if (dimension === "fuelType") return turbo.fuelType;
   if (dimension === "bodyType") return turbo.bodyType;
@@ -162,6 +187,7 @@ function rowDimension(project: ProjectKey, row: AnyRow, dimension: string): stri
 function defaultDimension(project: ProjectKey): string {
   if (project === "Bina.az") return "region";
   if (project === "Markets") return "category";
+  if (project === "Birmarket") return "category";
   return "brand";
 }
 
@@ -233,6 +259,28 @@ function filterRows(project: ProjectKey, rows: AnyRow[], context: ToolContext): 
     ));
   }
 
+
+  if (project === "Birmarket") {
+    const categories = new Set(stringArray(filters.categories));
+    const subcategories = new Set(stringArray(filters.subcategories));
+    const brands = new Set(stringArray(filters.brands));
+    const statuses = new Set(stringArray(filters.statuses));
+    const priceRange = numberRange(filters.priceRange);
+    const discountRange = numberRange(filters.discountRange);
+    const ratingRange = numberRange(filters.ratingRange);
+
+    return (rows as BirmarketRow[]).filter((row) => (
+      (!hasPeriods || periods.has(row.period)) &&
+      (categories.size === 0 || categories.has(row.category)) &&
+      (subcategories.size === 0 || subcategories.has(row.subcategory)) &&
+      (brands.size === 0 || brands.has(row.brand)) &&
+      (statuses.size === 0 || statuses.has(row.status)) &&
+      inRange(row.price, priceRange) &&
+      inRange(row.discountPercent, discountRange) &&
+      (!ratingRange || (row.rating !== null && inRange(row.rating, ratingRange)))
+    ));
+  }
+
   const brands = new Set(stringArray(filters.selectedBrands));
   const fuelTypes = new Set(stringArray(filters.fuelTypes));
   const bodyTypes = new Set(stringArray(filters.bodyTypes));
@@ -266,7 +314,7 @@ function summarize(project: ProjectKey, rows: AnyRow[], context: ToolContext) {
     .map(([period, values]) => ({
       period,
       count: values.length,
-      median: Number(median(values).toFixed(project === "Markets" ? 2 : 0)),
+      median: Number(median(values).toFixed(priceDigits(project))),
     }))
     .sort((a, b) => periodCompare(a.period, b.period));
 
@@ -298,7 +346,7 @@ function segmentBreakdown(project: ProjectKey, rows: AnyRow[], context: ToolCont
       .map(([key, values]) => ({
         key,
         count: values.length,
-        median: Number(median(values).toFixed(project === "Markets" ? 2 : 0)),
+        median: Number(median(values).toFixed(priceDigits(project))),
       }))
       .filter((point) => point.count >= 5)
       .sort((a, b) => b.median - a.median)
@@ -309,6 +357,7 @@ function segmentBreakdown(project: ProjectKey, rows: AnyRow[], context: ToolCont
 function dimensionsForProject(project: ProjectKey): string[] {
   if (project === "Bina.az") return ["region", "category", "rooms"];
   if (project === "Markets") return ["source", "category", "brand"];
+  if (project === "Birmarket") return ["category", "subcategory", "brand", "discountBand", "status", "seller"];
   return ["brand", "fuelType", "bodyType", "transmission"];
 }
 
@@ -366,11 +415,11 @@ function compareSegment(project: ProjectKey, rows: AnyRow[], context: ToolContex
     key,
     market: {
       count: rows.length,
-      median: Number(marketMedian.toFixed(project === "Markets" ? 2 : 0)),
+      median: Number(marketMedian.toFixed(priceDigits(project))),
     },
     segment: {
       count: segmentRows.length,
-      median: Number(segmentMedian.toFixed(project === "Markets" ? 2 : 0)),
+      median: Number(segmentMedian.toFixed(priceDigits(project))),
     },
     premiumPct,
     segmentTrend: summarize(project, segmentRows, context),

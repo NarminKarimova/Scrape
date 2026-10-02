@@ -4,7 +4,10 @@ import type { ProjectKey } from "@/lib/dashboard-data";
 export type SummaryTrendPoint = {
   period: string;
   medianPrice: number;
+  cleanedAverage: number;
   count: number;
+  retainedCount: number;
+  excludedCount: number;
 };
 
 export type SummaryBreakdownPoint = {
@@ -29,7 +32,7 @@ export type DashboardSummary = {
   };
 };
 
-export async function loadDashboardSummary(project: "bina" | "markets" | "turbo") {
+export async function loadDashboardSummary(project: "bina" | "markets" | "birmarket" | "turbo") {
   const backend = await resolveDataBackend();
   return readJsonFile<DashboardSummary>(backend, `${project}/summary.json`);
 }

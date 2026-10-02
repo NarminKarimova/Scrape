@@ -12,16 +12,19 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 import { decodeCompactRows, type CompactRow } from "@/lib/compact-dashboard-data";
 import { MarketChat, type AnalysisContext } from "@/components/market-chat";
 import { MarketOverallSummary } from "@/components/market-overall-summary";
 import type { DashboardSummary, SummaryBreakdownPoint } from "@/lib/dashboard-summary";
 
-type ProjectKey = "Bina.az" | "Markets" | "Turbo.az";
+type ProjectKey = "Bina.az" | "Markets" | "Birmarket" | "Turbo.az";
 
 type BinaRow = {
   period: string;
@@ -42,6 +45,21 @@ type MarketsRow = {
   price: number;
 };
 
+type BirmarketRow = {
+  period: string;
+  category: string;
+  subcategory: string;
+  brand: string;
+  seller: string;
+  price: number;
+  basePrice: number;
+  discountPercent: number;
+  rating: number | null;
+  ratingCount: number | null;
+  sellerRating: number | null;
+  status: "New" | "Existing";
+};
+
 type TurboRow = {
   period: string;
   brand: string;
@@ -53,7 +71,7 @@ type TurboRow = {
   transmission: string;
 };
 
-type AnyRow = BinaRow | MarketsRow | TurboRow;
+type AnyRow = BinaRow | MarketsRow | BirmarketRow | TurboRow;
 
 type RegionMode = "all" | "top10" | "top20" | "custom";
 type BrandMode = "all" | "top10" | "top20" | "custom";
@@ -76,6 +94,9 @@ type TrendPoint = {
   period: string;
   dateLabel: string;
   medianPrice: number;
+  cleanedAverage: number;
+  retainedCount: number;
+  excludedCount: number;
   pctChange: number;
   pctLabel: string;
 };
@@ -92,6 +113,20 @@ type BreakdownPoint = {
   valueLabel: string;
   period?: string;
   dateLabel?: string;
+};
+
+type BirmarketCategoryProfile = {
+  category: string;
+  shortCategory: string;
+  count: number;
+  countLabel: string;
+  medianPrice: number;
+  medianDiscount: number;
+  noDiscount: number;
+  under10: number;
+  tenTo24: number;
+  twentyFiveTo49: number;
+  fiftyPlus: number;
 };
 
 type TrendDatum = TrendPoint & Record<string, string | number>;
@@ -133,9 +168,11 @@ const I18N: Record<Lang, Record<string, string>> = {
     operation: "Operation",
     regions: "Regions",
     categories: "Categories",
+    subcategories: "Subcategories",
     rooms: "Rooms",
     sources: "Sources",
     brands: "Brands",
+    statuses: "Listing status",
     fuelTypes: "Fuel types",
     transmissions: "Transmissions",
     bodyTypes: "Body types",
@@ -148,6 +185,8 @@ const I18N: Record<Lang, Record<string, string>> = {
     minAdsRegion: "Min ads per region",
     minAdsBrand: "Min ads per brand",
     priceRange: "Price range (₼)",
+    discountRange: "Discount range (%)",
+    ratingRange: "Rating range",
     areaRange: "Area range (m²)",
     unitPriceRange: "Unit price range (₼/m²)",
     yearRange: "Year range",
@@ -158,6 +197,10 @@ const I18N: Record<Lang, Record<string, string>> = {
     filteredListings: "Filtered listings",
     medianPriceM2: "Median Price / m²",
     medianPrice: "Median Price (₼)",
+    cleanedAverage: "Outlier-adjusted average",
+    retained: "retained",
+    excluded: "excluded",
+    priceTrendCombined: "Price trend — median and cleaned average",
     prev: "Prev",
     latestPeriodChange: "Latest period change",
     priceTrend: "Price trend — aggregated median",
@@ -184,7 +227,16 @@ const I18N: Record<Lang, Record<string, string>> = {
     byFuelType: "By fuel type",
     byRegion: "By region",
     byCategory: "By category",
+    bySubcategory: "By subcategory",
     byBrand: "By brand",
+    byDiscount: "By discount",
+    priceDiscountMatrix: "Price–discount matrix — top categories by listings",
+    assortmentByCategory: "Listing mix — top categories",
+    discountStructure: "Discount structure by category",
+    medianDiscount: "Median discount",
+    listingsLabel: "Listings",
+    noDiscountBand: "No discount",
+    under10Band: "1–9%",
     byBodyType: "By body type",
     byTransmission: "By transmission",
     groupBy: "Group by",
@@ -202,6 +254,19 @@ const I18N: Record<Lang, Record<string, string>> = {
     sampleInsight: "Sample",
   },
   az: {
+    subcategories: "Sub-kateqoriyalar",
+    bySubcategory: "Sub-kateqoriya üzrə",
+    cleanedAverage: "Təmizlənmiş orta qiymət",
+    retained: "saxlanılıb",
+    excluded: "çıxarılıb",
+    priceTrendCombined: "Qiymət trendi — median və təmizlənmiş orta",
+    priceDiscountMatrix: "Qiymət–endirim matrisi — elan sayına görə əsas kateqoriyalar",
+    assortmentByCategory: "Elan strukturu — əsas kateqoriyalar",
+    discountStructure: "Kateqoriya üzrə endirim strukturu",
+    medianDiscount: "Median endirim",
+    listingsLabel: "Elanlar",
+    noDiscountBand: "Endirimsiz",
+    under10Band: "1–9%",
     marketAnalytics: "Bazar Analitikası",
     loading: "Yüklənir…",
     rows: "sətir",
@@ -212,6 +277,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     rooms: "Otaqlar",
     sources: "Mənbələr",
     brands: "Brendlər",
+    statuses: "Elan statusu",
     fuelTypes: "Yanacaq növləri",
     transmissions: "Sürətlər qutusu",
     bodyTypes: "Ban növləri",
@@ -224,6 +290,8 @@ const I18N: Record<Lang, Record<string, string>> = {
     minAdsRegion: "Region üzrə min elan",
     minAdsBrand: "Brend üzrə min elan",
     priceRange: "Qiymət aralığı (₼)",
+    discountRange: "Endirim aralığı (%)",
+    ratingRange: "Reytinq aralığı",
     areaRange: "Sahə aralığı (m²)",
     unitPriceRange: "Vahid qiymət aralığı (₼/m²)",
     yearRange: "İl aralığı",
@@ -261,6 +329,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     byRegion: "Regiona görə",
     byCategory: "Kateqoriyaya görə",
     byBrand: "Brendə görə",
+    byDiscount: "Endirimə görə",
     byBodyType: "Ban növünə görə",
     byTransmission: "Sürətlər qutusuna görə",
     groupBy: "Qruplaşdır",
@@ -541,15 +610,17 @@ function CheckboxList({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const visible = options.filter((o) =>
+  const selected = useMemo(() => new Set(value), [value]);
+  const matching = options.filter((o) =>
     o.toLowerCase().includes(search.toLowerCase()),
   );
+  const visible = matching.slice(0, 250);
   const allOn = value.length === options.length;
   const someOn = value.length > 0 && !allOn;
 
   const toggleAll = () => onChange(allOn ? [] : [...options]);
   const toggle = (o: string) =>
-    onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o]);
+    onChange(selected.has(o) ? value.filter((x) => x !== o) : [...value, o]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -623,7 +694,7 @@ function CheckboxList({
                 <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800">
                   <input
                     type="checkbox"
-                    checked={value.includes(o)}
+                    checked={selected.has(o)}
                     onChange={() => toggle(o)}
                     className="accent-blue-500"
                   />
@@ -633,6 +704,11 @@ function CheckboxList({
                 </label>
               </li>
             ))}
+            {matching.length > visible.length && (
+              <li className="px-3 py-2 text-xs text-zinc-400 dark:text-zinc-500">
+                +{matching.length - visible.length} more — refine your search
+              </li>
+            )}
             {visible.length === 0 && (
               <li className="px-3 py-2 text-xs text-zinc-400 dark:text-zinc-500">
                 {ui?.noResults ?? "No results"}
@@ -675,22 +751,29 @@ function KpiCard({
 
   return (
     <div
-      className={`relative flex min-h-[140px] flex-col justify-between overflow-hidden rounded-2xl border ${borderClass} bg-gradient-to-br from-white to-slate-50/60 p-5 shadow-sm transition-all hover:shadow-md dark:from-zinc-900 dark:to-zinc-900/40`}
+      className={`group relative flex min-h-[156px] flex-col justify-between overflow-hidden rounded-[1.4rem] border ${borderClass} bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_40px_rgba(15,23,42,0.04)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(15,23,42,0.09)] dark:bg-[#111827] dark:shadow-none`}
     >
+      <span className={`absolute inset-x-5 top-0 h-0.5 rounded-full ${
+        accent === "green"
+          ? "bg-emerald-400"
+          : accent === "red"
+            ? "bg-rose-400"
+            : "bg-indigo-500"
+      }`} />
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
             {label}
           </span>
         </div>
         <div className="flex items-baseline gap-2">
           <span
-            className={`text-3xl font-extrabold tabular-nums tracking-tight ${accentClass}`}
+            className={`text-[2rem] font-semibold tabular-nums tracking-[-0.04em] sm:text-[2.25rem] ${accentClass}`}
           >
             {value}
           </span>
           {sub && (
-            <span className="text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
+            <span className="text-[11px] font-medium text-slate-400">
               {sub}
             </span>
           )}
@@ -698,7 +781,7 @@ function KpiCard({
       </div>
 
       {history && history.length > 0 && (
-        <div className="mt-4 flex gap-3 border-t border-slate-100 pt-3 dark:border-zinc-800/50">
+        <div className="mt-4 flex gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
           {history.map((item, i) => (
             <div key={i} className="flex flex-col">
               <span className="text-[9px] font-medium uppercase text-zinc-400 dark:text-zinc-500">
@@ -750,23 +833,113 @@ function Chart({
 }
 
 function Section({
+  id,
   title,
   children,
   extra,
 }: {
+  id?: string;
   title: string;
   children: React.ReactNode;
   extra?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/40 p-6 shadow-sm dark:border-zinc-800/80 dark:from-zinc-900 dark:to-zinc-900/40">
-      <div className="mb-5 flex items-center justify-between">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+    <section id={id} className="scroll-mt-36 rounded-[1.4rem] border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_18px_45px_rgba(15,23,42,0.035)] sm:p-6 lg:scroll-mt-36 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
           {title}
         </p>
         {extra && <div>{extra}</div>}
       </div>
       {children}
+    </section>
+  );
+}
+
+function quantile(sortedValues: number[], q: number): number {
+  if (!sortedValues.length) return 0;
+  const position = (sortedValues.length - 1) * q;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sortedValues[lower];
+  const weight = position - lower;
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+}
+
+function retainRobustValues(values: number[]): number[] {
+  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (valid.length < 20) return valid;
+
+  if (valid.length >= 100) {
+    const logs = valid.map((value) => Math.log(value));
+    const logMedian = median(logs);
+    const deviations = logs.map((value) => Math.abs(value - logMedian));
+    const mad = median(deviations);
+    if (mad > Number.EPSILON) {
+      const retained = valid.filter((_value, index) => (
+        Math.abs((0.67448975 * (logs[index] - logMedian)) / mad) <= 3.5
+      ));
+      if (retained.length) return retained;
+    }
+  }
+
+  const sorted = [...valid].sort((a, b) => a - b);
+  const lower = quantile(sorted, 0.01);
+  const upper = quantile(sorted, 0.99);
+  const retained = valid.filter((value) => value >= lower && value <= upper);
+  return retained.length ? retained : valid;
+}
+
+function robustAdjustedMean(groups: Iterable<number[]>): {
+  cleanedAverage: number;
+  retainedCount: number;
+  excludedCount: number;
+} {
+  let retainedCount = 0;
+  let originalCount = 0;
+  let retainedSum = 0;
+
+  for (const values of groups) {
+    const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+    const retained = retainRobustValues(valid);
+    originalCount += valid.length;
+    retainedCount += retained.length;
+    for (const value of retained) retainedSum += value;
+  }
+
+  return {
+    cleanedAverage: retainedCount ? retainedSum / retainedCount : 0,
+    retainedCount,
+    excludedCount: Math.max(0, originalCount - retainedCount),
+  };
+}
+
+function BirmarketMatrixTooltip({
+  active,
+  payload,
+  lang,
+  isLight,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: BirmarketCategoryProfile }>;
+  lang: Lang;
+  isLight: boolean;
+}) {
+  const point = payload?.[0]?.payload;
+  if (!active || !point) return null;
+
+  return (
+    <div
+      className={`rounded-xl border px-3 py-2.5 text-xs shadow-lg ${
+        isLight
+          ? "border-slate-200 bg-white text-slate-700"
+          : "border-zinc-700 bg-zinc-900 text-zinc-200"
+      }`}
+    >
+      <p className="mb-1.5 max-w-64 font-semibold">{point.category}</p>
+      <p>{lang === "az" ? "Median qiymət" : "Median price"}: {fmtFixed(point.medianPrice, 2)} ₼</p>
+      <p>{lang === "az" ? "Median endirim" : "Median discount"}: {point.medianDiscount.toFixed(1)}%</p>
+      <p>{lang === "az" ? "Elanlar" : "Listings"}: {fmtNum(point.count)}</p>
     </div>
   );
 }
@@ -781,9 +954,9 @@ function InsightReadout({ insights }: { insights: Insight[] }) {
   };
 
   return (
-    <ul className="grid gap-3 text-sm leading-6 text-zinc-700 dark:text-zinc-300 lg:grid-cols-2">
+    <ul className="grid gap-3 text-sm leading-6 text-slate-600 dark:text-slate-300 lg:grid-cols-2">
       {insights.map((insight, index) => (
-        <li key={`${index}-${insight.text}`} className="flex gap-3">
+        <li key={`${index}-${insight.text}`} className="rounded-xl bg-slate-50/80 p-3.5 dark:bg-slate-900/70">
           <span
             className={`mt-2 h-2 w-2 shrink-0 rounded-full ${toneClasses[insight.tone]}`}
           />
@@ -810,10 +983,10 @@ function FilterSection({
     <div>
       <button
         type="button"
-        className="flex w-full items-center justify-between py-1 text-left"
+            className="flex w-full items-center justify-between rounded-lg py-1 text-left"
         onClick={() => setOpen((p) => !p)}
       >
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">
           {title}
         </span>
         <span className="flex items-center gap-1.5">
@@ -975,7 +1148,7 @@ function NumberRangeFilter({
 
 function EmptyState({ title, hint }: { title: string; hint: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-slate-50/40 p-8 text-center dark:border-zinc-800/80 dark:bg-zinc-900/40">
+    <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-white p-12 text-center dark:border-slate-700 dark:bg-[#111827]">
       <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
         {title}
       </p>
@@ -984,8 +1157,57 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
   );
 }
 
+function discountBandLabel(discountPercent: number): string {
+  if (discountPercent <= 0) return "No discount";
+  if (discountPercent < 10) return "Under 10%";
+  if (discountPercent < 25) return "10-24%";
+  if (discountPercent < 50) return "25-49%";
+  return "50%+";
+}
+
+function ProjectIcon({ project }: { project: ProjectKey }) {
+  if (project === "Bina.az") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="m3.5 10.5 8.5-7 8.5 7" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5.5 9.5V21h13V9.5M9.5 21v-6h5v6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (project === "Markets") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M4 7h16l-1.2 13H5.2L4 7Z" strokeLinejoin="round" />
+        <path d="M8 9V6a4 4 0 0 1 8 0v3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (project === "Birmarket") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M5 8h14l-1 12H6L5 8Z" strokeLinejoin="round" />
+        <path d="M9 10V7a3 3 0 0 1 6 0v3" strokeLinecap="round" />
+        <path d="M9 14h6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="m4 14 1.8-5h12.4l1.8 5v5H4v-5Z" strokeLinejoin="round" />
+      <path d="M2.5 14h19M7.5 19v1.5M16.5 19v1.5" strokeLinecap="round" />
+      <circle cx="7.5" cy="15.5" r=".8" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="15.5" r=".8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export default function Home() {
   const [splitTrend, setSplitTrend] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const [activeView, setActiveView] = useState<"dashboard" | "assistant">(
+    "dashboard",
+  );
   const [project, setProject] = useState<ProjectKey>("Bina.az");
   const [lang, setLang] = useState<Lang>("az");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -999,6 +1221,7 @@ export default function Home() {
   const [operationType, setOperationType] = useState<"Sale" | "Rent">("Sale");
   const [regions, setRegions] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [subcategories, setSubcategories] = useState<string[]>([]);
   const [rooms, setRooms] = useState<string[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
@@ -1029,6 +1252,14 @@ export default function Home() {
   const [marketsPriceRange, setMarketsPriceRange] = useState<[number, number]>([
     0, 1_000,
   ]);
+
+  const [birmarketStatuses, setBirmarketStatuses] = useState<string[]>([]);
+  const [birmarketPriceBounds, setBirmarketPriceBounds] = useState<[number, number]>([0, 10_000]);
+  const [birmarketDiscountBounds, setBirmarketDiscountBounds] = useState<[number, number]>([0, 100]);
+  const [birmarketRatingBounds, setBirmarketRatingBounds] = useState<[number, number]>([0, 5]);
+  const [birmarketPriceRange, setBirmarketPriceRange] = useState<[number, number]>([0, 10_000]);
+  const [birmarketDiscountRange, setBirmarketDiscountRange] = useState<[number, number]>([0, 100]);
+  const [birmarketRatingRange, setBirmarketRatingRange] = useState<[number, number]>([0, 5]);
 
   const [turboBrandMode, setTurboBrandMode] = useState<BrandMode>("all");
   const [turboMinAds, setTurboMinAds] = useState<number>(20);
@@ -1061,6 +1292,9 @@ export default function Home() {
   const [breakdownDimMarkets, setBreakdownDimMarkets] = useState<
     "source" | "category" | "brand"
   >("source");
+  const [breakdownDimBirmarket, setBreakdownDimBirmarket] = useState<
+    "category" | "subcategory" | "brand" | "discountBand"
+  >("category");
   const [breakdownDimTurbo, setBreakdownDimTurbo] = useState<
     "fuelType" | "bodyType" | "transmission"
   >("fuelType");
@@ -1113,6 +1347,9 @@ export default function Home() {
     } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
       setTheme("light");
     }
+    setFiltersCollapsed(
+      localStorage.getItem("dashboard-filters-collapsed") === "true",
+    );
   }, []);
 
   // 2. Sync theme class to <html> and save to localStorage
@@ -1127,6 +1364,37 @@ export default function Home() {
     }
     localStorage.setItem("dashboard-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen]);
+
+  const toggleFiltersCollapsed = () => {
+    setFiltersCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem("dashboard-filters-collapsed", String(next));
+      return next;
+    });
+  };
+
+  const revealFilters = () => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+      setFiltersCollapsed(false);
+      localStorage.setItem("dashboard-filters-collapsed", "false");
+      return;
+    }
+    setFiltersOpen(true);
+  };
 
   const checkboxUi = {
     search: t("search"),
@@ -1173,6 +1441,27 @@ export default function Home() {
         marketsPriceRange[1] !== marketsPriceBounds[1]
       )
         n++;
+    } else if (project === "Birmarket") {
+      const mc = (meta.categories as string[]) ?? [];
+      if (categories.length !== mc.length) n++;
+      const msc = (meta.subcategories as string[]) ?? [];
+      if (subcategories.length !== msc.length) n++;
+      const mb = (meta.brands as string[]) ?? [];
+      if (brands.length !== mb.length) n++;
+      const ms = (meta.statuses as string[]) ?? [];
+      if (birmarketStatuses.length !== ms.length) n++;
+      if (
+        birmarketPriceRange[0] !== birmarketPriceBounds[0] ||
+        birmarketPriceRange[1] !== birmarketPriceBounds[1]
+      ) n++;
+      if (
+        birmarketDiscountRange[0] !== birmarketDiscountBounds[0] ||
+        birmarketDiscountRange[1] !== birmarketDiscountBounds[1]
+      ) n++;
+      if (
+        birmarketRatingRange[0] !== birmarketRatingBounds[0] ||
+        birmarketRatingRange[1] !== birmarketRatingBounds[1]
+      ) n++;
     } else {
       const mb = (meta.brands as string[]) ?? [];
       if (brands.length !== mb.length) n++;
@@ -1206,6 +1495,7 @@ export default function Home() {
     operationType,
     regions,
     categories,
+    subcategories,
     rooms,
     sources,
     brands,
@@ -1220,6 +1510,13 @@ export default function Home() {
     binaUnitBounds,
     marketsPriceRange,
     marketsPriceBounds,
+    birmarketStatuses,
+    birmarketPriceRange,
+    birmarketPriceBounds,
+    birmarketDiscountRange,
+    birmarketDiscountBounds,
+    birmarketRatingRange,
+    birmarketRatingBounds,
     turboPriceRange,
     turboPriceBounds,
     turboYearRange,
@@ -1247,6 +1544,14 @@ export default function Home() {
       setCategories((meta.categories as string[]) ?? []);
       setBrands((meta.brands as string[]) ?? []);
       setMarketsPriceRange(marketsPriceBounds);
+    } else if (project === "Birmarket") {
+      setCategories((meta.categories as string[]) ?? []);
+      setSubcategories((meta.subcategories as string[]) ?? []);
+      setBrands((meta.brands as string[]) ?? []);
+      setBirmarketStatuses((meta.statuses as string[]) ?? []);
+      setBirmarketPriceRange(birmarketPriceBounds);
+      setBirmarketDiscountRange(birmarketDiscountBounds);
+      setBirmarketRatingRange(birmarketRatingBounds);
     } else {
       setBrands((meta.brands as string[]) ?? []);
       setTurboBrandMode("all");
@@ -1273,8 +1578,18 @@ export default function Home() {
       setMeta({});
       setSummary(null);
       try {
-        const route = project === "Bina.az" ? "/api/data/bina" : project === "Markets" ? "/api/data/markets" : "/api/data/turbo";
-        const summaryRoute = project === "Bina.az" ? "/api/summary/bina" : project === "Markets" ? "/api/summary/markets" : "/api/summary/turbo";
+        const route = {
+          "Bina.az": "/api/data/bina",
+          Markets: "/api/data/markets",
+          Birmarket: "/api/data/birmarket",
+          "Turbo.az": "/api/data/turbo",
+        }[project];
+        const summaryRoute = {
+          "Bina.az": "/api/summary/bina",
+          Markets: "/api/summary/markets",
+          Birmarket: "/api/summary/birmarket",
+          "Turbo.az": "/api/summary/turbo",
+        }[project];
         const applySummaryState = (loadedSummary: DashboardSummary) => {
           const loadedMeta = loadedSummary.meta ?? {};
           setSummary(loadedSummary);
@@ -1304,6 +1619,20 @@ export default function Home() {
             const priceBounds = loadedSummary.bounds.price ?? [0, 1_000];
             setMarketsPriceBounds(priceBounds);
             setMarketsPriceRange(priceBounds);
+          } else if (project === "Birmarket") {
+            setCategories((loadedMeta.categories as string[]) ?? []);
+            setSubcategories((loadedMeta.subcategories as string[]) ?? []);
+            setBrands((loadedMeta.brands as string[]) ?? []);
+            setBirmarketStatuses((loadedMeta.statuses as string[]) ?? []);
+            const priceBounds = loadedSummary.bounds.price ?? [0, 10_000];
+            const discountBounds = loadedSummary.bounds.discount ?? [0, 100];
+            const ratingBounds = loadedSummary.bounds.rating ?? [0, 5];
+            setBirmarketPriceBounds(priceBounds);
+            setBirmarketDiscountBounds(discountBounds);
+            setBirmarketRatingBounds(ratingBounds);
+            setBirmarketPriceRange(priceBounds);
+            setBirmarketDiscountRange(discountBounds);
+            setBirmarketRatingRange(ratingBounds);
           } else {
             setBrands((loadedMeta.brands as string[]) ?? []);
             setTurboBrandMode("all");
@@ -1430,6 +1759,26 @@ export default function Home() {
           setMarketsPriceRange(priceBounds);
         }
 
+        if (project === "Birmarket") {
+          const typed = data.rows as BirmarketRow[];
+          setCategories((data.meta?.categories as string[]) ?? []);
+          setSubcategories((data.meta?.subcategories as string[]) ?? []);
+          setBrands((data.meta?.brands as string[]) ?? []);
+          setBirmarketStatuses((data.meta?.statuses as string[]) ?? []);
+          const priceBounds = numericBounds(typed.map((r) => r.price), [0, 10_000]);
+          const discountBounds = numericBounds(typed.map((r) => r.discountPercent), [0, 100]);
+          const ratingBounds = numericBounds(
+            typed.map((r) => r.rating).filter((v): v is number => v != null),
+            [0, 5],
+          );
+          setBirmarketPriceBounds(priceBounds);
+          setBirmarketDiscountBounds(discountBounds);
+          setBirmarketRatingBounds(ratingBounds);
+          setBirmarketPriceRange(priceBounds);
+          setBirmarketDiscountRange(discountBounds);
+          setBirmarketRatingRange(ratingBounds);
+        }
+
         if (project === "Turbo.az") {
           const typed = data.rows as TurboRow[];
           setBrands((data.meta?.brands as string[]) ?? []);
@@ -1529,6 +1878,33 @@ export default function Home() {
       return { rows: rowsFiltered, counts: new Map(), availableRegions: [], availableBrands: [] };
     }
 
+    if (project === "Birmarket") {
+      const typed = rows as BirmarketRow[];
+      const categorySet = new Set(categories);
+      const subcategorySet = new Set(subcategories);
+      const brandSet = new Set(brands);
+      const statusSet = new Set(birmarketStatuses);
+      const ratingFilterActive =
+        birmarketRatingRange[0] !== birmarketRatingBounds[0] ||
+        birmarketRatingRange[1] !== birmarketRatingBounds[1];
+      const rowsFiltered = typed.filter((r) => {
+        const okRating = r.rating == null
+          ? !ratingFilterActive
+          : r.rating >= birmarketRatingRange[0] && r.rating <= birmarketRatingRange[1];
+        return (
+          periodSet.has(r.period) &&
+          (categories.length === 0 || categorySet.has(r.category)) &&
+          (subcategories.length === 0 || subcategorySet.has(r.subcategory)) &&
+          (brands.length === 0 || brandSet.has(r.brand)) &&
+          (birmarketStatuses.length === 0 || statusSet.has(r.status)) &&
+          r.price >= birmarketPriceRange[0] && r.price <= birmarketPriceRange[1] &&
+          r.discountPercent >= birmarketDiscountRange[0] && r.discountPercent <= birmarketDiscountRange[1] &&
+          okRating
+        );
+      });
+      return { rows: rowsFiltered, counts: new Map(), availableRegions: [], availableBrands: [] };
+    }
+
     // Turbo.az
     const typed = rows as TurboRow[];
     const fuelSet = new Set(turboFuelTypes);
@@ -1561,6 +1937,7 @@ export default function Home() {
     periods,
     operationType,
     categories,
+    subcategories,
     rooms,
     binaPriceRange,
     binaAreaRange,
@@ -1568,6 +1945,11 @@ export default function Home() {
     sources,
     brands, // Markets uses manual brands filter completely
     marketsPriceRange,
+    birmarketStatuses,
+    birmarketPriceRange,
+    birmarketDiscountRange,
+    birmarketRatingRange,
+    birmarketRatingBounds,
     turboPriceRange,
     turboYearRange,
     turboMileageRange,
@@ -1606,6 +1988,10 @@ export default function Home() {
       return baseData.rows as MarketsRow[];
     }
 
+    if (project === "Birmarket") {
+      return baseData.rows as BirmarketRow[];
+    }
+
     // Turbo.az
     const base = baseData.rows as TurboRow[];
     if (turboBrandMode === "custom") {
@@ -1629,16 +2015,92 @@ export default function Home() {
     return base.filter((r) => selectedSet.has(r.brand));
   }, [project, baseData, regionMode, regions, minRegionAds, turboBrandMode, brands, turboMinAds]);
 
+  const birmarketCategoryCharts = useMemo(() => {
+    if (project !== "Birmarket") {
+      return {
+        matrix: [] as BirmarketCategoryProfile[],
+        assortment: [] as BirmarketCategoryProfile[],
+        discountMix: [] as BirmarketCategoryProfile[],
+      };
+    }
+
+    type CategoryBucket = {
+      prices: number[];
+      discounts: number[];
+      bands: [number, number, number, number, number];
+    };
+
+    const buckets = new Map<string, CategoryBucket>();
+    for (const row of filteredRows as BirmarketRow[]) {
+      const bucket = buckets.get(row.category) ?? {
+        prices: [],
+        discounts: [],
+        bands: [0, 0, 0, 0, 0],
+      };
+      bucket.prices.push(row.price);
+      bucket.discounts.push(row.discountPercent);
+      const bandIndex =
+        row.discountPercent <= 0
+          ? 0
+          : row.discountPercent < 10
+            ? 1
+            : row.discountPercent < 25
+              ? 2
+              : row.discountPercent < 50
+                ? 3
+                : 4;
+      bucket.bands[bandIndex] += 1;
+      buckets.set(row.category, bucket);
+    }
+
+    const totalRows = Math.max(1, filteredRows.length);
+    const profiles = [...buckets.entries()].map(([category, bucket]) => {
+      const count = bucket.prices.length;
+      const percentage = (value: number) => Number(((value / count) * 100).toFixed(2));
+      return {
+        category,
+        shortCategory: category.length > 22 ? `${category.slice(0, 21)}…` : category,
+        count,
+        countLabel: `${fmtNum(count)} · ${((count / totalRows) * 100).toFixed(1)}%`,
+        medianPrice: Number(median(bucket.prices).toFixed(2)),
+        medianDiscount: Number(median(bucket.discounts).toFixed(1)),
+        noDiscount: percentage(bucket.bands[0]),
+        under10: percentage(bucket.bands[1]),
+        tenTo24: percentage(bucket.bands[2]),
+        twentyFiveTo49: percentage(bucket.bands[3]),
+        fiftyPlus: percentage(bucket.bands[4]),
+      } satisfies BirmarketCategoryProfile;
+    });
+
+    const assortment = [...profiles].sort((a, b) => b.count - a.count);
+    return {
+      matrix: assortment.slice(0, 12),
+      assortment,
+      discountMix: [...profiles].sort(
+        (a, b) => (100 - b.noDiscount) - (100 - a.noDiscount),
+      ),
+    };
+  }, [filteredRows, project]);
+
 
   const rawTrend = useMemo(() => {
     const byPeriod = new Map<string, number[]>();
     const byPeriodAndGroup = new Map<string, Map<string, number[]>>();
+    const cleaningGroupsByPeriod = new Map<string, Map<string, number[]>>();
+    const addCleaningValue = (period: string, group: string, value: number) => {
+      const periodGroups = cleaningGroupsByPeriod.get(period) ?? new Map<string, number[]>();
+      const values = periodGroups.get(group) ?? [];
+      values.push(value);
+      periodGroups.set(group, values);
+      cleaningGroupsByPeriod.set(period, periodGroups);
+    };
 
     if (project === "Bina.az") {
       for (const r of filteredRows as BinaRow[]) {
         const metric = operationType === "Rent" ? r.price : r.pricePerM2;
         if (!byPeriod.has(r.period)) byPeriod.set(r.period, []);
         byPeriod.get(r.period)?.push(metric);
+        addCleaningValue(r.period, r.category, metric);
         
         if (splitTrend && regionMode === "custom") {
           const grp = r.region;
@@ -1651,11 +2113,19 @@ export default function Home() {
       for (const r of filteredRows as MarketsRow[]) {
         if (!byPeriod.has(r.period)) byPeriod.set(r.period, []);
         byPeriod.get(r.period)?.push(r.price);
+        addCleaningValue(r.period, `${r.source}\u0000${r.category}`, r.price);
+      }
+    } else if (project === "Birmarket") {
+      for (const r of filteredRows as BirmarketRow[]) {
+        if (!byPeriod.has(r.period)) byPeriod.set(r.period, []);
+        byPeriod.get(r.period)?.push(r.price);
+        addCleaningValue(r.period, r.subcategory, r.price);
       }
     } else {
       for (const r of filteredRows as TurboRow[]) {
         if (!byPeriod.has(r.period)) byPeriod.set(r.period, []);
         byPeriod.get(r.period)?.push(r.price);
+        addCleaningValue(r.period, r.brand, r.price);
         
         if (splitTrend && turboBrandMode === "custom") {
           const grp = r.brand;
@@ -1669,10 +2139,14 @@ export default function Home() {
     const points = [...byPeriod.entries()]
       .sort(([a], [b]) => periodCompare(a, b))
       .map(([period, values]) => {
+        const adjusted = robustAdjustedMean(
+          cleaningGroupsByPeriod.get(period)?.values() ?? [],
+        );
         const base: Record<string, string | number> = {
           period,
           dateLabel: periodToLabel(period, dateLocale),
           medianPrice: median(values),
+          ...adjusted,
         };
         const grpMap = byPeriodAndGroup.get(period);
         if (grpMap) {
@@ -1707,6 +2181,9 @@ export default function Home() {
           period: point.period,
           dateLabel: periodToLabel(point.period, dateLocale),
           medianPrice: point.medianPrice,
+          cleanedAverage: point.cleanedAverage ?? point.medianPrice,
+          retainedCount: point.retainedCount ?? point.count,
+          excludedCount: point.excludedCount ?? 0,
         }));
       return withPercentChange(points, {
         noPreviousPeriod: t("noPreviousPeriod"),
@@ -1801,7 +2278,7 @@ export default function Home() {
   }, [summary, dateLocale, t]);
   const listingCountTrend = useSummaryView ? summaryListingCountTrend : rawListingCountTrend;
 
-  const priceFractionDigits = project === "Markets" ? 2 : 0;
+  const priceFractionDigits = project === "Markets" || project === "Birmarket" ? 2 : 0;
 
   const kpis = useMemo(() => {
   const sorted = [...trend].sort((a, b) => periodCompare(b.period, a.period));
@@ -1811,6 +2288,13 @@ export default function Home() {
     return {
       count: useSummaryView ? (summary?.defaultView.count ?? 0) : filteredRows.length,
       medianValue: latest?.medianPrice ?? 0,
+      cleanedAverageValue: latest?.cleanedAverage ?? 0,
+      retainedCount: latest?.retainedCount ?? 0,
+      excludedCount: latest?.excludedCount ?? 0,
+      retainedPct:
+        latest && latest.retainedCount + latest.excludedCount > 0
+          ? (latest.retainedCount / (latest.retainedCount + latest.excludedCount)) * 100
+          : 100,
       latestPct: latest?.pctChange ?? 0,
       latestLabel: latest?.dateLabel ?? "",
       history: prevs.map((p) => ({
@@ -1826,6 +2310,10 @@ export default function Home() {
             ? "red"
             : "neutral") as "green" | "red" | "neutral",
       })),
+      cleanedHistory: prevs.map((p) => ({
+        label: p.dateLabel,
+        value: fmtFixed(p.cleanedAverage, priceFractionDigits),
+      })),
     };
   }, [filteredRows, priceFractionDigits, trend, useSummaryView, summary]);
 
@@ -1837,7 +2325,7 @@ export default function Home() {
   const priceTrendDomain = useMemo(
     () => {
       const allValues = trend.flatMap((point) => {
-        const vals = [point.medianPrice];
+        const vals = [point.medianPrice, point.cleanedAverage];
         if (splitTrend) {
           for (const group of trendGroups) {
             const v = (point as TrendDatum)[group];
@@ -1911,6 +2399,13 @@ export default function Home() {
         if (breakdownDimMarkets === "category") return r.category;
         return r.brand;
       }
+      if (project === "Birmarket") {
+        const r = row as BirmarketRow;
+        if (breakdownDimBirmarket === "category") return r.category;
+        if (breakdownDimBirmarket === "subcategory") return r.subcategory;
+        if (breakdownDimBirmarket === "brand") return r.brand;
+        return discountBandLabel(r.discountPercent);
+      }
       const r = row as TurboRow;
       if (breakdownDimTurbo === "fuelType") return r.fuelType;
       if (breakdownDimTurbo === "bodyType") return r.bodyType;
@@ -1921,7 +2416,7 @@ export default function Home() {
         const r = row as BinaRow;
         return operationType === "Sale" ? r.pricePerM2 : r.price;
       }
-      return (row as MarketsRow | TurboRow).price;
+      return (row as MarketsRow | BirmarketRow | TurboRow).price;
     };
     const makePoint = (
       key: string,
@@ -1930,7 +2425,7 @@ export default function Home() {
     ): BreakdownPoint => {
       const medianValue = median(values);
       const medianPrice =
-        project === "Markets"
+        project === "Markets" || project === "Birmarket"
           ? Number(medianValue.toFixed(2))
           : Math.round(medianValue);
       const labelKey = period ? `${periodToLabel(period, dateLocale)}: ${key}` : key;
@@ -1984,6 +2479,7 @@ export default function Home() {
     operationType,
     breakdownDimBina,
     breakdownDimMarkets,
+    breakdownDimBirmarket,
     breakdownDimTurbo,
     breakdownMode,
     dateLocale,
@@ -2003,6 +2499,13 @@ export default function Home() {
             category: t("byCategory"),
             brand: t("byBrand"),
           }[breakdownDimMarkets]
+        : project === "Birmarket"
+          ? {
+              category: t("byCategory"),
+              subcategory: t("bySubcategory"),
+              brand: t("byBrand"),
+              discountBand: t("byDiscount"),
+            }[breakdownDimBirmarket]
         : {
             fuelType: t("byFuelType"),
             bodyType: t("byBodyType"),
@@ -2016,12 +2519,14 @@ export default function Home() {
         ? breakdownDimBina
         : project === "Markets"
           ? breakdownDimMarkets
-          : breakdownDimTurbo;
+          : project === "Birmarket"
+            ? breakdownDimBirmarket
+            : breakdownDimTurbo;
     const mode = breakdownMode === "monthly" ? "monthly" : "aggregate";
     const points = summary.defaultView.breakdowns[mode][dim] ?? [];
     return points.map((point: SummaryBreakdownPoint) => {
       const medianPrice =
-        project === "Markets"
+        project === "Markets" || project === "Birmarket"
           ? Number(point.medianPrice.toFixed(2))
           : Math.round(point.medianPrice);
       const key = point.period
@@ -2043,6 +2548,7 @@ export default function Home() {
     project,
     breakdownDimBina,
     breakdownDimMarkets,
+    breakdownDimBirmarket,
     breakdownDimTurbo,
     breakdownMode,
     dateLocale,
@@ -2076,7 +2582,7 @@ export default function Home() {
         const r = row as BinaRow;
         return operationType === "Sale" ? r.pricePerM2 : r.price;
       }
-      return (row as MarketsRow | TurboRow).price;
+      return (row as MarketsRow | BirmarketRow | TurboRow).price;
     };
     const segmentKey = (row: AnyRow, dim: string) => {
       if (project === "Bina.az") {
@@ -2090,6 +2596,14 @@ export default function Home() {
         const r = row as MarketsRow;
         if (dim === "source") return r.source;
         if (dim === "category") return r.category;
+        return r.brand;
+      }
+      if (project === "Birmarket") {
+        const r = row as BirmarketRow;
+        if (dim === "category") return r.category;
+        if (dim === "subcategory") return r.subcategory;
+        if (dim === "discountBand") return discountBandLabel(r.discountPercent);
+        if (dim === "status") return r.status;
         return r.brand;
       }
       const r = row as TurboRow;
@@ -2111,6 +2625,13 @@ export default function Home() {
               { id: "brand", label: t("byBrand") },
               { id: "source", label: t("bySource") },
             ]
+          : project === "Birmarket"
+            ? [
+                { id: "category", label: t("byCategory") },
+                { id: "subcategory", label: t("bySubcategory") },
+                { id: "brand", label: t("byBrand") },
+                { id: "discountBand", label: t("byDiscount") },
+              ]
           : [
               { id: "brand", label: t("byBrand") },
               { id: "fuelType", label: t("byFuelType") },
@@ -2122,7 +2643,7 @@ export default function Home() {
       previous ? ((current - previous) / previous) * 100 : 0;
     const sample = (count: number) => (isAz ? `n=${fmtNum(count)}` : `n=${fmtNum(count)}`);
     const reliableRows = (total: number) =>
-      Math.max(project === "Markets" ? 50 : 100, Math.ceil(total * 0.002));
+      Math.max(project === "Markets" || project === "Birmarket" ? 50 : 100, Math.ceil(total * 0.002));
 
     if (latestPrice && previousPrice && latestCount && previousCount) {
       const priceChange = vs(latestPrice.medianPrice, previousPrice.medianPrice);
@@ -2463,6 +2984,21 @@ export default function Home() {
               brands,
               priceRange: marketsPriceRange,
             }
+          : project === "Birmarket"
+            ? {
+                ...commonFilters,
+                categories,
+                subcategories,
+                brands,
+                statuses: birmarketStatuses,
+                priceRange: birmarketPriceRange,
+                discountRange: birmarketDiscountRange,
+                ratingRange:
+                  birmarketRatingRange[0] !== birmarketRatingBounds[0] ||
+                  birmarketRatingRange[1] !== birmarketRatingBounds[1]
+                    ? birmarketRatingRange
+                    : undefined,
+              }
           : {
               ...commonFilters,
               brandMode: turboBrandMode,
@@ -2484,6 +3020,9 @@ export default function Home() {
         filteredRows: kpis.count,
         medianLabel,
         latestMedian: kpis.medianValue,
+        latestCleanedAverage: kpis.cleanedAverageValue,
+        cleanedAverageRetainedRows: kpis.retainedCount,
+        cleanedAverageExcludedRows: kpis.excludedCount,
         latestPercentChange: kpis.latestPct,
         latestPeriod: kpis.latestLabel,
         usingSummaryView: useSummaryView,
@@ -2510,6 +3049,7 @@ export default function Home() {
     minRegionAds,
     regions,
     categories,
+    subcategories,
     rooms,
     binaPriceRange,
     binaAreaRange,
@@ -2517,6 +3057,11 @@ export default function Home() {
     sources,
     brands,
     marketsPriceRange,
+    birmarketStatuses,
+    birmarketPriceRange,
+    birmarketDiscountRange,
+    birmarketRatingRange,
+    birmarketRatingBounds,
     turboBrandMode,
     turboMinAds,
     turboFuelTypes,
@@ -2537,36 +3082,107 @@ export default function Home() {
     insights,
   ]);
 
-  const projects: { key: ProjectKey; icon: string }[] = [
-    { key: "Bina.az", icon: "🏠" },
-    { key: "Markets", icon: "🛒" },
-    { key: "Turbo.az", icon: "🚗" },
-  ];
+  const projects: ProjectKey[] = ["Bina.az", "Markets", "Birmarket", "Turbo.az"];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-slate-50 to-slate-100 text-zinc-900 dark:from-zinc-950 dark:via-zinc-950 dark:to-black dark:text-zinc-100">
+    <div className="min-h-screen bg-[#f4f6fb] text-slate-950 dark:bg-[#080c14] dark:text-slate-100">
       {/* Top navbar */}
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-6 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-zinc-800 dark:bg-zinc-950/90 dark:supports-[backdrop-filter]:bg-zinc-950/70">
-        <span className="text-sm font-semibold tracking-tight text-zinc-700 dark:text-zinc-200">
-          {t("marketAnalytics")}
-        </span>
-        <nav className="flex gap-1">
-          {projects.map(({ key, icon }) => (
+      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl dark:border-slate-800 dark:bg-[#0b101a]/90">
+        <div className="mx-auto flex min-h-[72px] max-w-[1800px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6 lg:flex-nowrap lg:px-8">
+          <div className="flex min-w-fit items-center gap-3 lg:w-64">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-600 text-white shadow-[0_8px_24px_rgba(79,70,229,0.28)]">
+              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 18V9m7 9V5m7 13v-7" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div className="max-[430px]:hidden">
+              <span className="block text-sm font-semibold tracking-[-0.02em] text-slate-900 dark:text-white">
+                {t("marketAnalytics")}
+              </span>
+              <span className="hidden text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400 sm:block">
+                Azerbaijan · Live data
+              </span>
+            </div>
+          </div>
+
+          <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 lg:order-none lg:mx-auto lg:w-auto dark:bg-slate-900">
+          {projects.map((key) => (
             <button
               key={key}
-              onClick={() => setProject(key)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+              aria-current={project === key ? "page" : undefined}
+              onClick={() => {
+                setProject(key);
+                setFiltersOpen(false);
+              }}
+              className={`flex min-w-fit flex-1 items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all lg:flex-none ${
                 project === key
-                  ? "bg-slate-200 text-zinc-900 shadow dark:bg-zinc-800 dark:text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-800 dark:text-indigo-300 dark:ring-slate-700"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
               }`}
             >
-              <span>{icon}</span>
+              <ProjectIcon project={key} />
               {key}
             </button>
           ))}
-        </nav>
-        <div className="flex items-center gap-3 text-xs">
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2 text-xs">
+          <button
+            onClick={() =>
+              setActiveView((current) =>
+                current === "dashboard" ? "assistant" : "dashboard",
+              )
+            }
+            aria-pressed={activeView === "assistant"}
+            className={`flex h-9 items-center gap-2 rounded-xl border px-2.5 font-semibold transition sm:px-3 ${
+              activeView === "assistant"
+                ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
+                : "border-slate-200 bg-white text-slate-600 shadow-sm hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-indigo-300"
+            }`}
+            title={
+              activeView === "dashboard"
+                ? lang === "az"
+                  ? "AI analitiki aç"
+                  : "Open AI analyst"
+                : lang === "az"
+                  ? "Panelə qayıt"
+                  : "Back to dashboard"
+            }
+          >
+            {activeView === "dashboard" ? (
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1" strokeLinecap="round" />
+                <circle cx="12" cy="12" r="3.5" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z" strokeLinejoin="round" />
+              </svg>
+            )}
+            <span className="hidden sm:inline">
+              {activeView === "dashboard"
+                ? lang === "az"
+                  ? "AI analitik"
+                  : "AI analyst"
+                : lang === "az"
+                  ? "Panel"
+                  : "Dashboard"}
+            </span>
+          </button>
+          <button
+            onClick={() => setFiltersOpen(true)}
+            aria-expanded={filtersOpen}
+            aria-controls="dashboard-filters"
+            className="relative flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 font-semibold text-slate-600 shadow-sm lg:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M7 12h10m-7 6h4" strokeLinecap="round" />
+            </svg>
+            {t("filters")}
+            {activeFilterCount > 0 && (
+              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-indigo-600 px-1 text-[10px] text-white">{activeFilterCount}</span>
+            )}
+          </button>
           <PillToggle
             options={[
               { label: "EN", value: "en" },
@@ -2578,7 +3194,7 @@ export default function Home() {
           {/* Theme toggle */}
           <button
             onClick={() => setTheme(isLight ? "dark" : "light")}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-300 text-zinc-500 transition hover:border-slate-400 hover:text-zinc-700 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-200"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-white"
             title={isLight ? t("darkMode") : t("lightMode")}
           >
             {isLight ? (
@@ -2612,36 +3228,112 @@ export default function Home() {
             )}
           </button>
           {loading ? (
-            <span className="animate-pulse text-blue-400">{t("loading")}</span>
+            <span className="hidden animate-pulse text-indigo-500 sm:inline">{t("loading")}</span>
           ) : (
-            <span className="text-zinc-400 dark:text-zinc-600">
+            <span className="hidden items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 font-medium text-emerald-700 xl:flex dark:bg-emerald-500/10 dark:text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               {filteredRows.length.toLocaleString()} {t("rows")}
+            </span>
+          )}
+          </div>
+          {loading && (
+            <span className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-indigo-100 dark:bg-indigo-950">
+              <span className="block h-full w-1/3 animate-[loading-bar_1.2s_ease-in-out_infinite] bg-indigo-500" />
             </span>
           )}
         </div>
       </header>
 
-      <div className="flex">
+      <div className="mx-auto flex w-full max-w-[1800px]">
+        {filtersOpen && (
+          <button
+            className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-sm lg:hidden"
+            onClick={() => setFiltersOpen(false)}
+            aria-label="Close filters"
+          />
+        )}
         {/* Sidebar */}
-        <aside className="sticky top-14 h-[calc(100vh-3.5rem)] w-72 shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50/95 p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
-          <div className="mb-4 flex items-center justify-between">
-            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+        <aside
+          id="dashboard-filters"
+          aria-label={t("filters")}
+          className={`fixed inset-y-0 left-0 z-50 w-[min(88vw,340px)] shrink-0 overflow-y-auto border-r border-slate-200 bg-white p-5 shadow-2xl transition-[width,transform] duration-300 lg:sticky lg:top-[72px] lg:z-20 lg:h-[calc(100vh-72px)] lg:translate-x-0 lg:bg-white/65 lg:shadow-none ${
+          filtersCollapsed ? "lg:w-[76px]" : "lg:w-72 xl:w-80"
+        } dark:border-slate-800 dark:bg-[#0b101a] dark:lg:bg-[#0b101a]/75 ${
+          filtersOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        >
+          {filtersCollapsed && (
+            <div className="hidden h-full flex-col items-center gap-3 lg:flex">
+              <button
+                onClick={toggleFiltersCollapsed}
+                className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-600 text-white shadow-[0_8px_20px_rgba(79,70,229,0.24)] transition hover:bg-indigo-500"
+                title={lang === "az" ? "Filtrləri genişləndir" : "Expand filters"}
+                aria-label={lang === "az" ? "Filtrləri genişləndir" : "Expand filters"}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <div className="my-1 h-px w-8 bg-slate-200 dark:bg-slate-800" />
+              <div className="relative grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" title={project}>
+                <ProjectIcon project={project} />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-indigo-600 px-1 text-[9px] font-bold text-white ring-2 ring-white dark:ring-[#0b101a]">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={resetCurrentProjectFilters}
+                disabled={activeFilterCount === 0}
+                className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-30 dark:hover:bg-slate-800 dark:hover:text-indigo-300"
+                title={t("reset")}
+                aria-label={t("reset")}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M4 7v5h5M20 17v-5h-5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M6.1 16a7 7 0 0 0 11.5 1M17.9 8A7 7 0 0 0 6.4 7" strokeLinecap="round" />
+                </svg>
+              </button>
+              <span className="mt-auto pb-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400 [writing-mode:vertical-rl]">
+                {t("filters")}
+              </span>
+            </div>
+          )}
+          <div className={filtersCollapsed ? "lg:hidden" : ""}>
+          <div className="mb-5 flex items-center justify-between border-b border-slate-200 pb-4 dark:border-slate-800">
+            <span className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
               {t("filters")}
               {activeFilterCount > 0 && (
-                <span className="ml-2 inline-block rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-bold leading-none text-white">
+                <span className="inline-grid h-5 min-w-5 place-items-center rounded-full bg-indigo-600 px-1 text-[10px] font-bold leading-none text-white">
                   {activeFilterCount}
                 </span>
               )}
             </span>
-            <button
-              onClick={resetCurrentProjectFilters}
-              disabled={activeFilterCount === 0}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:border-slate-400 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-100"
-            >
-              {t("reset")}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={resetCurrentProjectFilters}
+                disabled={activeFilterCount === 0}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+              >
+                {t("reset")}
+              </button>
+              <button
+                onClick={toggleFiltersCollapsed}
+                className="hidden h-8 w-8 place-items-center rounded-lg bg-slate-100 text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-600 lg:grid dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
+                title={lang === "az" ? "Filtr panelini kiçilt" : "Minimize filter panel"}
+                aria-label={lang === "az" ? "Filtr panelini kiçilt" : "Minimize filter panel"}
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m15 6-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button onClick={() => setFiltersOpen(false)} className="grid h-8 w-8 place-items-center rounded-lg bg-slate-100 text-slate-500 lg:hidden dark:bg-slate-800 dark:text-slate-300" aria-label="Close filters">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" /></svg>
+              </button>
+            </div>
           </div>
-          <div className="space-y-6">
+          <div className="space-y-7 pb-8">
             <FilterSection title={t("months")}>
               <MonthChips
                 options={(meta.periods as string[]) ?? []}
@@ -2787,6 +3479,69 @@ export default function Home() {
               </>
             )}
 
+            {project === "Birmarket" && (
+              <>
+                <FilterSection title={t("categories")}>
+                  <CheckboxList
+                    label={t("categories")}
+                    options={(meta.categories as string[]) ?? []}
+                    value={categories}
+                    onChange={setCategories}
+                    ui={checkboxUi}
+                  />
+                </FilterSection>
+                <FilterSection title={t("subcategories")}>
+                  <CheckboxList
+                    label={t("subcategories")}
+                    options={(meta.subcategories as string[]) ?? []}
+                    value={subcategories}
+                    onChange={setSubcategories}
+                    ui={checkboxUi}
+                  />
+                </FilterSection>
+                <FilterSection title={t("brands")}>
+                  <CheckboxList
+                    label={t("brands")}
+                    options={(meta.brands as string[]) ?? []}
+                    value={brands}
+                    onChange={setBrands}
+                    ui={checkboxUi}
+                  />
+                </FilterSection>
+                <FilterSection title={t("statuses")}>
+                  <SourcePills
+                    options={(meta.statuses as string[]) ?? []}
+                    value={birmarketStatuses}
+                    onChange={setBirmarketStatuses}
+                  />
+                </FilterSection>
+                <FilterSection title={t("priceRange")}>
+                  <NumberRangeFilter
+                    value={birmarketPriceRange}
+                    bounds={birmarketPriceBounds}
+                    onChange={setBirmarketPriceRange}
+                    step={0.1}
+                  />
+                </FilterSection>
+                <FilterSection title={t("discountRange")}>
+                  <NumberRangeFilter
+                    value={birmarketDiscountRange}
+                    bounds={birmarketDiscountBounds}
+                    onChange={setBirmarketDiscountRange}
+                    step={0.1}
+                  />
+                </FilterSection>
+                <FilterSection title={t("ratingRange")}>
+                  <NumberRangeFilter
+                    value={birmarketRatingRange}
+                    bounds={birmarketRatingBounds}
+                    onChange={setBirmarketRatingRange}
+                    step={0.1}
+                  />
+                </FilterSection>
+              </>
+            )}
+
             {project === "Turbo.az" && (
               <>
                 <FilterSection title={t("brandRules")}>
@@ -2877,27 +3632,47 @@ export default function Home() {
               </>
             )}
           </div>
+          </div>
         </aside>
 
         {/* Main content */}
-        <main className="min-w-0 flex-1 space-y-5 p-6">
+        <main className="min-w-0 flex-1 space-y-5 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {activeView === "dashboard" ? (
+          <>
           {error && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-600 dark:border-rose-700/50 dark:bg-rose-900/20 dark:text-rose-300">
               {error}
             </div>
           )}
-          <div className="flex items-baseline justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                {project} {t("dashboard")}
-              </h1>
-              <p className="mt-0.5 text-xs text-zinc-500">
-                {t("aggregatedMedian")}
-              </p>
+          <div id="dashboard-overview" className="scroll-mt-28 rounded-[1.4rem] border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_18px_45px_rgba(15,23,42,0.035)] sm:p-7 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none">
+            <div className="flex flex-wrap items-end justify-between gap-5">
+              <div>
+                <div className="mb-2.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {lang === "az" ? "Canlı bazar görünüşü" : "Live market overview"}
+                </div>
+                <h1 className="text-2xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-[1.75rem] dark:text-white">
+                  {project} {t("dashboard")}
+                </h1>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  {t("aggregatedMedian")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  {periods.length} {t("months").toLowerCase()}
+                </span>
+                <button
+                  onClick={revealFilters}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300"
+                >
+                  {activeFilterCount} {t("activeFilters")}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div id="key-metrics" className="scroll-mt-36 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard
               label={t("filteredListings")}
               value={kpis.count.toLocaleString("en-US")}
@@ -2908,6 +3683,12 @@ export default function Home() {
               value={fmtFixed(kpis.medianValue, priceFractionDigits)}
               sub={kpis.latestLabel}
               history={kpis.history}
+            />
+            <KpiCard
+              label={t("cleanedAverage")}
+              value={fmtFixed(kpis.cleanedAverageValue, priceFractionDigits)}
+              sub={`${kpis.latestLabel} · ${kpis.retainedPct.toFixed(1)}% ${t("retained")}`}
+              history={kpis.cleanedHistory}
             />
             <KpiCard
               label={t("latestPeriodChange")}
@@ -2927,22 +3708,22 @@ export default function Home() {
             />
           </div>
 
-          {insights.length > 0 && (
-            <Section title={t("insights")}>
-              <InsightReadout insights={insights} />
-            </Section>
-          )}
-
-          <MarketOverallSummary context={analysisContext} />
-
-          <MarketChat context={analysisContext} disabled={loading || !!error} />
+          <div className={`grid gap-5 ${insights.length > 0 ? "2xl:grid-cols-[1.05fr_.95fr]" : ""}`}>
+            {insights.length > 0 && (
+              <Section title={t("insights")}>
+                <InsightReadout insights={insights} />
+              </Section>
+            )}
+            <MarketOverallSummary context={analysisContext} />
+          </div>
 
           {trend.length === 0 ? (
             <EmptyState title={t("noDataTitle")} hint={t("noDataHint")} />
           ) : (
             <>
-              <Section 
-                title={t("priceTrend")}
+              <Section
+                id="market-trends"
+                title={t("priceTrendCombined")}
                 extra={
                   canSplitTrend && (
                     <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">
@@ -2982,29 +3763,32 @@ export default function Home() {
                       domain={priceTrendDomain}
                       tickCount={6}
                       tickFormatter={(v: number) =>
-                        project === "Markets" ? fmtFixed(v, priceFractionDigits) : fmtNum(v)
+                        project === "Markets" || project === "Birmarket" ? fmtFixed(v, priceFractionDigits) : fmtNum(v)
                       }
                       width={82}
                     />
                     <Tooltip
                       {...shared}
-                      formatter={(v: number | undefined, name: string | undefined) => [
-                        fmtFixed(v ?? 0, priceFractionDigits),
-                        name === "medianPrice" ? medianLabel : (name ?? ""),
-                      ]}
+                      formatter={(v: number | undefined, name: string | undefined, entry) => {
+                        const point = entry.payload as TrendPoint | undefined;
+                        const baseName = name ?? "";
+                        const detail =
+                          baseName === t("cleanedAverage") && point
+                            ? `${baseName} · ${fmtNum(point.retainedCount)} ${t("retained")}, ${fmtNum(point.excludedCount)} ${t("excluded")}`
+                            : baseName;
+                        return [fmtFixed(v ?? 0, priceFractionDigits), detail];
+                      }}
                     />
-                    {splitTrend && (
-                      <Legend
-                        wrapperStyle={{ fontSize: "11px", color: chartColors.tick, paddingTop: "10px" }}
-                        iconType="circle"
-                      />
-                    )}
+                    <Legend
+                      wrapperStyle={{ fontSize: "11px", color: chartColors.tick, paddingTop: "10px" }}
+                      iconType="circle"
+                    />
                     {(!splitTrend || trendGroups.length === 0) && (
                       <Line
                         type="monotone"
                         dataKey="medianPrice"
-                        name="medianPrice"
-                        stroke="#60a5fa"
+                        name={medianLabel}
+                        stroke="#6366f1"
                         strokeWidth={2.5}
                         label={(props: ChartLabelProps) => {
                           if (
@@ -3025,13 +3809,13 @@ export default function Home() {
                               textAnchor="middle"
                               dominantBaseline={isEven ? "middle" : "middle"}
                             >
-                              {project === "Markets"
+                              {project === "Markets" || project === "Birmarket"
                                 ? fmtFixed(props.value, priceFractionDigits)
                                 : fmtNum(props.value)}
                             </text>
                           );
                         }}
-                        dot={{ r: 4, fill: "#60a5fa", strokeWidth: 0 }}
+                        dot={{ r: 4, fill: "#6366f1", strokeWidth: 0 }}
                         activeDot={{ r: 6 }}
                       />
                     )}
@@ -3060,7 +3844,7 @@ export default function Home() {
                               textAnchor="middle"
                               dominantBaseline="middle"
                             >
-                              {project === "Markets"
+                              {project === "Markets" || project === "Birmarket"
                                 ? fmtFixed(props.value, priceFractionDigits)
                                 : fmtNum(props.value)}
                             </text>
@@ -3070,6 +3854,16 @@ export default function Home() {
                         activeDot={{ r: 4 }}
                       />
                     )}
+                    <Line
+                      type="monotone"
+                      dataKey="cleanedAverage"
+                      name={t("cleanedAverage")}
+                      stroke="#f59e0b"
+                      strokeWidth={2.25}
+                      strokeDasharray="6 4"
+                      dot={{ r: 3.5, fill: "#f59e0b", strokeWidth: 0 }}
+                      activeDot={{ r: 5 }}
+                    />
                     {splitTrend && trendGroups.map((group, idx) => {
                       const colors = [
                         "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e",
@@ -3103,7 +3897,7 @@ export default function Home() {
                                 textAnchor="middle"
                                 dominantBaseline="middle"
                               >
-                                {project === "Markets"
+                                {project === "Markets" || project === "Birmarket"
                                   ? fmtFixed(props.value, priceFractionDigits)
                                   : fmtNum(props.value)}
                               </text>
@@ -3507,6 +4301,23 @@ export default function Home() {
                                 set: () => setBreakdownDimMarkets(d),
                               }),
                             )
+                          : project === "Birmarket"
+                            ? (["category", "subcategory", "brand", "discountBand"] as const).map(
+                                (d) => ({
+                                  id: d,
+                                  label: t(
+                                    d === "category"
+                                      ? "byCategory"
+                                      : d === "subcategory"
+                                        ? "bySubcategory"
+                                      : d === "brand"
+                                        ? "byBrand"
+                                        : "byDiscount",
+                                  ),
+                                  active: breakdownDimBirmarket === d,
+                                  set: () => setBreakdownDimBirmarket(d),
+                                }),
+                              )
                           : (
                               ["fuelType", "bodyType", "transmission"] as const
                             ).map((d) => ({
@@ -3619,7 +4430,247 @@ export default function Home() {
                   </Chart>
                 </Section>
               )}
+
+              {project === "Birmarket" && birmarketCategoryCharts.assortment.length > 0 && (
+                <>
+                  <div className="grid gap-5 xl:grid-cols-2">
+                    <Section title={t("priceDiscountMatrix")}>
+                      <Chart height={420}>
+                        <ScatterChart margin={{ top: 28, right: 28, left: 4, bottom: 26 }}>
+                          <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" />
+                          <XAxis
+                            type="number"
+                            dataKey="medianPrice"
+                            name={t("medianPrice")}
+                            unit=" ₼"
+                            stroke={chartColors.axis}
+                            tick={{ fill: chartColors.tick, fontSize: 10 }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(value) => fmtFixed(Number(value), 0)}
+                            label={{
+                              value: t("medianPrice"),
+                              position: "insideBottom",
+                              offset: -14,
+                              fill: chartColors.tick,
+                              fontSize: 10,
+                            }}
+                          />
+                          <YAxis
+                            type="number"
+                            dataKey="medianDiscount"
+                            name={t("medianDiscount")}
+                            unit="%"
+                            stroke={chartColors.axis}
+                            tick={{ fill: chartColors.tick, fontSize: 10 }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={48}
+                            tickFormatter={(value) => `${Number(value).toFixed(0)}%`}
+                          />
+                          <ZAxis dataKey="count" range={[90, 750]} />
+                          <Tooltip
+                            content={<BirmarketMatrixTooltip lang={lang} isLight={isLight} />}
+                          />
+                          <Scatter data={birmarketCategoryCharts.matrix}>
+                            {birmarketCategoryCharts.matrix.map((_point, index) => (
+                              <Cell
+                                key={`matrix-${index}`}
+                                fill={`hsl(${205 + index * 13}, 75%, ${isLight ? 48 : 62}%)`}
+                              />
+                            ))}
+                            <LabelList
+                              dataKey="shortCategory"
+                              position="top"
+                              fill={chartColors.tick}
+                              fontSize={9}
+                            />
+                          </Scatter>
+                        </ScatterChart>
+                      </Chart>
+                    </Section>
+
+                    <Section title={t("assortmentByCategory")}>
+                      <Chart height={420}>
+                        <BarChart
+                          data={birmarketCategoryCharts.assortment.slice(0, 12)}
+                          layout="vertical"
+                          margin={{ top: 4, right: 92, left: 4, bottom: 20 }}
+                        >
+                          <CartesianGrid
+                            stroke={chartColors.grid}
+                            strokeDasharray="3 3"
+                            horizontal={false}
+                          />
+                          <XAxis
+                            type="number"
+                            stroke={chartColors.axis}
+                            tick={{ fill: chartColors.tick, fontSize: 10 }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(value) => fmtNum(Number(value))}
+                          />
+                          <YAxis
+                            type="category"
+                            dataKey="shortCategory"
+                            width={138}
+                            stroke={chartColors.axis}
+                            tick={{ fill: chartColors.tick, fontSize: 9 }}
+                            axisLine={false}
+                            tickLine={false}
+                          />
+                          <Tooltip
+                            {...shared}
+                            labelFormatter={(_label, payload) =>
+                              (payload?.[0]?.payload as BirmarketCategoryProfile | undefined)?.category ?? ""
+                            }
+                            formatter={(value: number | undefined) => [
+                              fmtNum(value ?? 0),
+                              t("listingsLabel"),
+                            ]}
+                          />
+                          <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                            <LabelList
+                              dataKey="countLabel"
+                              position="right"
+                              fill={chartColors.tick}
+                              fontSize={9}
+                            />
+                            {birmarketCategoryCharts.assortment.slice(0, 12).map((_point, index) => (
+                              <Cell
+                                key={`assortment-${index}`}
+                                fill={`hsl(${220 + index * 8}, 72%, ${isLight ? 50 : 62}%)`}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </Chart>
+                    </Section>
+                  </div>
+
+                  <Section title={t("discountStructure")}>
+                    <Chart height={Math.max(420, birmarketCategoryCharts.discountMix.length * 30)}>
+                      <BarChart
+                        data={birmarketCategoryCharts.discountMix}
+                        layout="vertical"
+                        margin={{ top: 4, right: 28, left: 8, bottom: 24 }}
+                      >
+                        <CartesianGrid
+                          stroke={chartColors.grid}
+                          strokeDasharray="3 3"
+                          horizontal={false}
+                        />
+                        <XAxis
+                          type="number"
+                          domain={[0, 100]}
+                          stroke={chartColors.axis}
+                          tick={{ fill: chartColors.tick, fontSize: 10 }}
+                          axisLine={false}
+                          tickLine={false}
+                          tickFormatter={(value) => `${value}%`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="shortCategory"
+                          width={155}
+                          stroke={chartColors.axis}
+                          tick={{ fill: chartColors.tick, fontSize: 9 }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          {...shared}
+                          labelFormatter={(_label, payload) =>
+                            (payload?.[0]?.payload as BirmarketCategoryProfile | undefined)?.category ?? ""
+                          }
+                          formatter={(value: number | undefined, name: string | undefined) => [
+                            `${Number(value ?? 0).toFixed(1)}%`,
+                            name ?? "",
+                          ]}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Bar dataKey="noDiscount" name={t("noDiscountBand")} stackId="discount" fill="#94a3b8" />
+                        <Bar dataKey="under10" name={t("under10Band")} stackId="discount" fill="#38bdf8" />
+                        <Bar dataKey="tenTo24" name="10–24%" stackId="discount" fill="#6366f1" />
+                        <Bar dataKey="twentyFiveTo49" name="25–49%" stackId="discount" fill="#a855f7" />
+                        <Bar
+                          dataKey="fiftyPlus"
+                          name="50%+"
+                          stackId="discount"
+                          fill="#ec4899"
+                          radius={[0, 4, 4, 0]}
+                        />
+                      </BarChart>
+                    </Chart>
+                  </Section>
+                </>
+              )}
             </>
+          )}
+          </>
+          ) : (
+            <div className="space-y-5">
+              {error && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-600 dark:border-rose-700/50 dark:bg-rose-900/20 dark:text-rose-300">
+                  {error}
+                </div>
+              )}
+              <section className="rounded-[1.4rem] border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_18px_45px_rgba(15,23,42,0.035)] sm:p-7 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none">
+                <div className="flex flex-wrap items-end justify-between gap-5">
+                  <div className="flex items-start gap-4">
+                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white">
+                      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1" strokeLinecap="round" />
+                        <circle cx="12" cy="12" r="3.5" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        {project}
+                      </p>
+                      <h1 className="mt-1 text-2xl font-semibold tracking-[-0.035em] text-slate-950 dark:text-white">
+                        {lang === "az" ? "AI bazar analitiki" : "AI market analyst"}
+                      </h1>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        {lang === "az"
+                          ? "Cari panel filtrlərindən istifadə edərək bazarı ayrıca iş sahəsində araşdırın."
+                          : "Explore the market in a dedicated workspace using your current dashboard filters."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                      {kpis.count.toLocaleString("en-US")} {t("rows")}
+                    </span>
+                    <button
+                      onClick={revealFilters}
+                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-indigo-300"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M4 6h16M7 12h10m-7 6h4" strokeLinecap="round" />
+                      </svg>
+                      {t("filters")}
+                      {activeFilterCount > 0 && (
+                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-indigo-600 px-1 text-[9px] text-white">
+                          {activeFilterCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setActiveView("dashboard")}
+                      className="rounded-xl bg-slate-950 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    >
+                      {lang === "az" ? "Panelə qayıt" : "Back to dashboard"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+              <MarketChat
+                context={analysisContext}
+                disabled={loading || !!error}
+                workspace
+              />
+            </div>
           )}
         </main>
       </div>

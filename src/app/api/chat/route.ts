@@ -83,7 +83,7 @@ const ANALYSIS_TOOLS = [
             dimension: {
               type: "string",
               description:
-                "Segment dimension. Bina: region, category, rooms. Markets: source, category, brand. Turbo: brand, fuelType, bodyType, transmission.",
+                "Segment dimension. Bina: region, category, rooms. Markets: source, category, brand. Birmarket: category, subcategory, brand, discountBand, status, seller. Turbo: brand, fuelType, bodyType, transmission.",
             },
             limit: {
               type: "number",
@@ -147,7 +147,7 @@ const ANALYSIS_TOOLS = [
             dimension: {
               type: "string",
               description:
-                "Dimension name. Bina: region, category, rooms. Markets: source, category, brand. Turbo: brand, fuelType, bodyType, transmission.",
+                "Dimension name. Bina: region, category, rooms. Markets: source, category, brand. Birmarket: category, subcategory, brand, discountBand, status, seller. Turbo: brand, fuelType, bodyType, transmission.",
             },
             key: {
               type: "string",
@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
     "You are a market analysis assistant inside a dashboard.",
     "This bot is used for macroeconomic comparison and population-impact analysis in Azerbaijan.",
     "Focus on how market changes affect households, affordability, purchasing power, living costs, borrowing pressure, and regional inequality.",
-    "When relevant, connect real estate, car, and grocery/market price signals to population impact. Do not use external facts unless web search is enabled.",
+    "When relevant, connect real estate, car, grocery, and Birmarket e-commerce price signals to population impact. Do not use external facts unless web search is enabled.",
     "Reply in Azerbaijani by default unless the user asks for another language.",
     "Use only the supplied dashboard context, tool results, and conversation.",
     "You can call tools to compute filtered summaries, segment breakdowns, and period comparisons from dashboard rows.",

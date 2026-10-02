@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Market Comparison Dashboard",
-  description: "Next.js frontend for Bina.az, Markets, and Turbo.az analytics",
+  title: "Market Intelligence | Azerbaijan",
+  description: "Live pricing, supply, and segment intelligence across Azerbaijan's property, retail, and automotive markets.",
 };
 
 export default function RootLayout({

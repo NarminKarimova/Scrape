@@ -7,6 +7,12 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_ROOT = path.join(ROOT, "data");
 const OUT_DIR = path.join(ROOT, "processed");
 const CHUNK_SIZE = 25_000;
+const BIRMARKET_CATEGORY_MAP_PATH = path.join(DATA_ROOT, "birmarket", "category-map.json");
+
+function loadBirmarketCategoryMap() {
+  const parsed = JSON.parse(readFileSync(BIRMARKET_CATEGORY_MAP_PATH, "utf8"));
+  return parsed.categories ?? {};
+}
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -46,6 +52,19 @@ function toNumber(value) {
 function toStr(value) {
   if (value === null || value === undefined) return "";
   return String(value).trim();
+}
+
+function toBoolean(value) {
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes"].includes(toStr(value).toLowerCase());
+}
+
+function discountBandLabel(discountPercent) {
+  if (discountPercent <= 0) return "No discount";
+  if (discountPercent < 10) return "Under 10%";
+  if (discountPercent < 25) return "10-24%";
+  if (discountPercent < 50) return "25-49%";
+  return "50%+";
 }
 
 function normalizeSource(raw) {
@@ -208,6 +227,48 @@ async function loadTurboRows() {
   return rows;
 }
 
+async function loadBirmarketRows() {
+  const categoryMap = loadBirmarketCategoryMap();
+  const files = dedupeManifestPaths(
+    walkParquetFiles(path.join(DATA_ROOT, "birmarket")).map((f) =>
+      path.relative(DATA_ROOT, f).replace(/\\/g, "/"),
+    ),
+  );
+  const rows = [];
+  for (const relativePath of files) {
+    const period = extractPeriodFromName(basename(relativePath));
+    const rawRows = await readParquetRows(relativePath);
+    for (const row of rawRows) {
+      const price = toNumber(row.price);
+      if (price === null || price <= 0) continue;
+      const categoryId = String(toNumber(row.category_id) ?? "");
+      const mappedCategory = categoryMap[categoryId];
+      const subcategory = toStr(row.category) || mappedCategory?.subcategory || "Unknown";
+      const basePrice = toNumber(row.base_price);
+      const rawDiscount = toNumber(row.discount_percent);
+      const derivedDiscount = basePrice && basePrice > 0
+        ? Math.max(0, ((basePrice - price) / basePrice) * 100)
+        : 0;
+      const discountPercent = Math.max(0, rawDiscount ?? derivedDiscount);
+      rows.push({
+        period,
+        category: mappedCategory?.category || "Digər",
+        subcategory,
+        brand: toStr(row.brand) || "Unknown",
+        seller: toStr(row.seller) || "Unknown",
+        price,
+        basePrice: basePrice && basePrice > 0 ? basePrice : price,
+        discountPercent,
+        rating: toNumber(row.rating),
+        ratingCount: toNumber(row.rating_count),
+        sellerRating: toNumber(row.seller_rating),
+        status: toBoolean(row.is_new) ? "New" : "Existing",
+      });
+    }
+  }
+  return rows;
+}
+
 function writeProjectChunks(project, rows, meta) {
   const projectDir = path.join(OUT_DIR, project);
   rmSync(projectDir, { recursive: true, force: true });
@@ -233,6 +294,60 @@ function median(values) {
     : sorted[mid];
 }
 
+function quantile(sortedValues, q) {
+  if (!sortedValues.length) return 0;
+  const position = (sortedValues.length - 1) * q;
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  if (lower === upper) return sortedValues[lower];
+  const weight = position - lower;
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+}
+
+function retainRobustValues(values) {
+  const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+  if (valid.length < 20) return valid;
+
+  if (valid.length >= 100) {
+    const logs = valid.map((value) => Math.log(value));
+    const logMedian = median(logs);
+    const deviations = logs.map((value) => Math.abs(value - logMedian));
+    const mad = median(deviations);
+    if (mad > Number.EPSILON) {
+      const retained = valid.filter((_value, index) => (
+        Math.abs((0.67448975 * (logs[index] - logMedian)) / mad) <= 3.5
+      ));
+      if (retained.length) return retained;
+    }
+  }
+
+  const sorted = [...valid].sort((a, b) => a - b);
+  const lower = quantile(sorted, 0.01);
+  const upper = quantile(sorted, 0.99);
+  const retained = valid.filter((value) => value >= lower && value <= upper);
+  return retained.length ? retained : valid;
+}
+
+function robustAdjustedMean(groups) {
+  let retainedCount = 0;
+  let originalCount = 0;
+  let retainedSum = 0;
+
+  for (const values of groups.values()) {
+    const valid = values.filter((value) => Number.isFinite(value) && value > 0);
+    const retained = retainRobustValues(valid);
+    originalCount += valid.length;
+    retainedCount += retained.length;
+    for (const value of retained) retainedSum += value;
+  }
+
+  return {
+    cleanedAverage: retainedCount ? retainedSum / retainedCount : 0,
+    retainedCount,
+    excludedCount: Math.max(0, originalCount - retainedCount),
+  };
+}
+
 function numericBounds(values, fallback) {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
@@ -250,16 +365,26 @@ function roomGroupLabel(rooms) {
   return rooms >= 5 ? "5+" : String(rooms);
 }
 
-function buildTrend(rows, metric) {
+function buildTrend(rows, metric, group) {
   const byPeriod = new Map();
   for (const row of rows) {
-    const values = byPeriod.get(row.period) ?? [];
-    values.push(metric(row));
-    byPeriod.set(row.period, values);
+    const bucket = byPeriod.get(row.period) ?? { values: [], groups: new Map() };
+    const value = metric(row);
+    bucket.values.push(value);
+    const groupKey = group(row);
+    const groupValues = bucket.groups.get(groupKey) ?? [];
+    groupValues.push(value);
+    bucket.groups.set(groupKey, groupValues);
+    byPeriod.set(row.period, bucket);
   }
   return [...byPeriod.entries()]
     .sort(([a], [b]) => sortedPeriods([a, b]).indexOf(a) - sortedPeriods([a, b]).indexOf(b))
-    .map(([period, values]) => ({ period, medianPrice: median(values), count: values.length }));
+    .map(([period, bucket]) => ({
+      period,
+      medianPrice: median(bucket.values),
+      count: bucket.values.length,
+      ...robustAdjustedMean(bucket.groups),
+    }));
 }
 
 function buildBreakdowns(rows, dims, metric) {
@@ -320,7 +445,7 @@ function writeSummary(project, rows, meta, config) {
     bounds: config.bounds(rows),
     defaultView: {
       count: defaultRows.length,
-      trend: buildTrend(defaultRows, metric),
+      trend: buildTrend(defaultRows, metric, config.cleaningGroup),
       breakdowns: buildBreakdowns(defaultRows, config.dims, metric),
     },
   };
@@ -353,6 +478,7 @@ writeSummary("bina", binaRows, binaMeta, {
     return saleRows.filter((row) => (counts.get(row.region) ?? 0) >= 50);
   },
   metric: (row) => row.pricePerM2,
+  cleaningGroup: (row) => row.category,
   dims: {
     rooms: (row) => roomGroupLabel(row.rooms),
     region: (row) => row.region,
@@ -374,10 +500,38 @@ writeSummary("markets", marketsRows, marketsMeta, {
   }),
   defaultRows: (rows) => rows,
   metric: (row) => row.price,
+  cleaningGroup: (row) => `${row.source}\u0000${row.category}`,
   dims: {
     source: (row) => row.source,
     category: (row) => row.category,
     brand: (row) => row.brand,
+  },
+});
+
+const birmarketRows = await loadBirmarketRows();
+const birmarketMeta = {
+  periods: sortedPeriods(birmarketRows.map((r) => r.period)),
+  categories: [...new Set(birmarketRows.map((r) => r.category))].sort(),
+  subcategories: [...new Set(birmarketRows.map((r) => r.subcategory))].sort(),
+  brands: [...new Set(birmarketRows.map((r) => r.brand))].sort(),
+  sellers: [...new Set(birmarketRows.map((r) => r.seller))].sort(),
+  statuses: [...new Set(birmarketRows.map((r) => r.status))].sort(),
+};
+writeProjectChunks("birmarket", birmarketRows, birmarketMeta);
+writeSummary("birmarket", birmarketRows, birmarketMeta, {
+  bounds: (rows) => ({
+    price: numericBounds(rows.map((r) => r.price), [0, 10_000]),
+    discount: numericBounds(rows.map((r) => r.discountPercent), [0, 100]),
+    rating: numericBounds(rows.map((r) => r.rating).filter((v) => v != null), [0, 5]),
+  }),
+  defaultRows: (rows) => rows,
+  metric: (row) => row.price,
+  cleaningGroup: (row) => row.subcategory,
+  dims: {
+    category: (row) => row.category,
+    subcategory: (row) => row.subcategory,
+    brand: (row) => row.brand,
+    discountBand: (row) => discountBandLabel(row.discountPercent),
   },
 });
 
@@ -402,6 +556,7 @@ writeSummary("turbo", turboRows, turboMeta, {
     return rows.filter((row) => (counts.get(row.brand) ?? 0) >= 20);
   },
   metric: (row) => row.price,
+  cleaningGroup: (row) => row.brand,
   dims: {
     fuelType: (row) => row.fuelType,
     bodyType: (row) => row.bodyType,

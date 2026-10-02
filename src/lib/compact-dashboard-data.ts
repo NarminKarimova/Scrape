@@ -1,7 +1,7 @@
-import type { BinaRow, MarketsRow, ProjectKey, TurboRow } from "@/lib/dashboard-data";
+import type { BinaRow, BirmarketRow, MarketsRow, ProjectKey, TurboRow } from "@/lib/dashboard-data";
 
 export type CompactRow = (number | string | null)[];
-export type DashboardRow = BinaRow | MarketsRow | TurboRow;
+export type DashboardRow = BinaRow | MarketsRow | BirmarketRow | TurboRow;
 
 function indexByValue(values: unknown): Map<string, number> {
   const map = new Map<string, number>();
@@ -58,6 +58,28 @@ export function compactRows(
     ]);
   }
 
+  if (project === "Birmarket") {
+    const categories = indexByValue(meta.categories);
+    const subcategories = indexByValue(meta.subcategories);
+    const brands = indexByValue(meta.brands);
+    const sellers = indexByValue(meta.sellers);
+    const statuses = indexByValue(meta.statuses);
+    return (rows as BirmarketRow[]).map((row) => [
+      compactValue(periods, row.period),
+      compactValue(categories, row.category),
+      compactValue(subcategories, row.subcategory),
+      compactValue(brands, row.brand),
+      compactValue(sellers, row.seller),
+      row.price,
+      row.basePrice,
+      row.discountPercent,
+      row.rating,
+      row.ratingCount,
+      row.sellerRating,
+      compactValue(statuses, row.status),
+    ]);
+  }
+
   const brands = indexByValue(meta.brands);
   const fuelTypes = indexByValue(meta.fuelTypes);
   const bodyTypes = indexByValue(meta.bodyTypes);
@@ -99,6 +121,24 @@ export function decodeCompactRows(
       category: lookup(meta.categories, row[2]),
       brand: lookup(meta.brands, row[3]),
       price: Number(row[4]),
+    }));
+  }
+
+
+  if (project === "Birmarket") {
+    return rows.map((row) => ({
+      period: lookup(meta.periods, row[0]),
+      category: lookup(meta.categories, row[1]),
+      subcategory: lookup(meta.subcategories, row[2]),
+      brand: lookup(meta.brands, row[3]),
+      seller: lookup(meta.sellers, row[4]),
+      price: Number(row[5]),
+      basePrice: Number(row[6]),
+      discountPercent: Number(row[7]),
+      rating: row[8] == null ? null : Number(row[8]),
+      ratingCount: row[9] == null ? null : Number(row[9]),
+      sellerRating: row[10] == null ? null : Number(row[10]),
+      status: lookup(meta.statuses, row[11]) as "New" | "Existing",
     }));
   }
 

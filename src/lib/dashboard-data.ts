@@ -6,7 +6,7 @@ import {
   type DataBackend,
 } from "@/lib/data-backend";
 
-export type ProjectKey = "Bina.az" | "Markets" | "Turbo.az";
+export type ProjectKey = "Bina.az" | "Markets" | "Birmarket" | "Turbo.az";
 
 export type BinaRow = {
   period: string;
@@ -27,6 +27,21 @@ export type MarketsRow = {
   price: number;
 };
 
+export type BirmarketRow = {
+  period: string;
+  category: string;
+  subcategory: string;
+  brand: string;
+  seller: string;
+  price: number;
+  basePrice: number;
+  discountPercent: number;
+  rating: number | null;
+  ratingCount: number | null;
+  sellerRating: number | null;
+  status: "New" | "Existing";
+};
+
 export type TurboRow = {
   period: string;
   brand: string;
@@ -45,6 +60,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minute cache
 type DataManifest = {
   bina: string[];
   markets: string[];
+  birmarket: string[];
   turbo: string[];
 };
 
@@ -117,6 +133,11 @@ function toNumber(value: unknown): number | null {
 function toStr(value: unknown): string {
   if (value === null || value === undefined) return "";
   return String(value).trim();
+}
+
+function toBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  return ["true", "1", "yes"].includes(toStr(value).toLowerCase());
 }
 
 function normalizeSource(raw: string): string {
@@ -192,6 +213,7 @@ async function loadManifest(backend: DataBackend): Promise<DataManifest> {
         ),
       ),
       markets: dedupeManifestPaths(await backend.listParquetPaths("markets/data")),
+      birmarket: dedupeManifestPaths(await backend.listParquetPaths("birmarket")),
       turbo: dedupeManifestPaths(await backend.listParquetPaths("turbo_az/data")),
     };
 
@@ -313,6 +335,21 @@ export async function loadMarketsPage(
   }));
 }
 
+export async function loadBirmarketPage(
+  cursor: number,
+  pageSize: number,
+  includeMeta: boolean,
+): Promise<PageResult<BirmarketRow>> {
+  return loadProjectPage("birmarket", cursor, pageSize, includeMeta, loadBirmarketRows, (rows) => ({
+    periods: sortedPeriods(rows.map((r) => r.period)),
+    categories: [...new Set(rows.map((r) => r.category))].sort(),
+    subcategories: [...new Set(rows.map((r) => r.subcategory))].sort(),
+    brands: [...new Set(rows.map((r) => r.brand))].sort(),
+    sellers: [...new Set(rows.map((r) => r.seller))].sort(),
+    statuses: [...new Set(rows.map((r) => r.status))].sort(),
+  }));
+}
+
 export async function loadTurboPage(
   cursor: number,
   pageSize: number,
@@ -412,6 +449,60 @@ export async function loadMarketsRows(): Promise<MarketsRow[]> {
           category: toStr(row.category) || "Unknown",
           brand: toStr(row.brand) || "Unknown",
           price,
+        });
+      }
+    }
+
+    setCached(key, rows);
+    return rows;
+  });
+}
+
+export async function loadBirmarketRows(): Promise<BirmarketRow[]> {
+  const backend = await resolveParquetBackend();
+  const key = `birmarket:${backend.id}`;
+  const cached = getCached<BirmarketRow[]>(key);
+  if (cached) return cached;
+
+  return withInFlight(key, async () => {
+    const categoryMapFile = await readJsonFile<{
+      categories?: Record<string, { category: string; subcategory: string }>;
+    }>(backend, "birmarket/category-map.json");
+    const categoryMap = categoryMapFile?.categories ?? {};
+    const manifest = await loadManifest(backend);
+    const files = dedupeManifestPaths(manifest.birmarket);
+    const rows: BirmarketRow[] = [];
+
+    for (const relativePath of files) {
+      const period = extractPeriodFromName(basename(relativePath));
+      const rawRows = await readParquetRowsFromFile(backend, relativePath);
+
+      for (const row of rawRows) {
+        const price = toNumber(row.price);
+        if (price === null || price <= 0) continue;
+        const categoryId = String(toNumber(row.category_id) ?? "");
+        const mappedCategory = categoryMap[categoryId];
+        const subcategory = toStr(row.category) || mappedCategory?.subcategory || "Unknown";
+        const basePriceRaw = toNumber(row.base_price);
+        const basePrice = basePriceRaw && basePriceRaw > 0 ? basePriceRaw : price;
+        const rawDiscount = toNumber(row.discount_percent);
+        const derivedDiscount = basePrice > 0
+          ? Math.max(0, ((basePrice - price) / basePrice) * 100)
+          : 0;
+
+        rows.push({
+          period,
+          category: mappedCategory?.category || "Digər",
+          subcategory,
+          brand: toStr(row.brand) || "Unknown",
+          seller: toStr(row.seller) || "Unknown",
+          price,
+          basePrice,
+          discountPercent: Math.max(0, rawDiscount ?? derivedDiscount),
+          rating: toNumber(row.rating),
+          ratingCount: toNumber(row.rating_count),
+          sellerRating: toNumber(row.seller_rating),
+          status: toBoolean(row.is_new) ? "New" : "Existing",
         });
       }
     }

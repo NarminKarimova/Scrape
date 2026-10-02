@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     "Yalnız verilən dashboard konteksti və tool nəticələrindən istifadə et. Xarici fakt və proqnoz uydurma.",
     "Məqsəd: bazar qiymətlərindəki dəyişmənin əhali üçün nə demək olduğunu izah etmək.",
     "Xüsusilə bax: əlçatanlıq, alıcılıq gücü, yaşayış xərci, borclanma təzyiqi, regional bərabərsizlik, tələbin zəifləməsi/güclənməsi.",
-    "Layihə Bina.az, Turbo.az və Markets datalarını makro müqayisə üçün istifadə edir: daşınmaz əmlak, avtomobil və istehlak səbəti siqnallarını əhali təsiri kimi şərh et.",
+    "Layihə Bina.az, Turbo.az, Markets və Birmarket datalarını makro müqayisə üçün istifadə edir: daşınmaz əmlak, avtomobil, istehlak səbəti və e-ticarət siqnallarını əhali təsiri kimi şərh et.",
     "Markdown formatı:",
     "1) Bir cümləlik **Nəticə**.",
     "2) 5 bullet: **Qiymət siqnalı**, **Həcm siqnalı**, **Əhaliyə təsir**, **Makro şərh**, **Risk/caveat**.",
