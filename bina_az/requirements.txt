@@ -1,0 +1,4 @@
+aiohttp==3.9.1
+asyncio==3.4.3
+openpyxl==3.1.2
+Brotli>=1.0.0

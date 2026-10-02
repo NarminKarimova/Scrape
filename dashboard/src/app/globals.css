@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: elements with .dark ancestor use dark: variants */
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f4f6fb;
+  --foreground: #0f172a;
+}
+
+.dark {
+  --background: #080c14;
+  --foreground: #f8fafc;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Segoe UI Variable", "Aptos", Inter, Segoe UI, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Segoe UI Variable", "Aptos", Inter, Segoe UI, Arial, Helvetica, sans-serif;
+  min-width: 320px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+* {
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+.dark * {
+  scrollbar-color: #334155 transparent;
+}
+
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+@keyframes loading-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(160%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+/* ── Dual-thumb range slider ───────────────────────────────── */
+.range-thumb {
+  position: absolute;
+  inset: -6px 0;
+  width: 100%;
+  height: calc(100% + 12px);
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+.range-thumb::-webkit-slider-runnable-track { background: transparent; }
+.range-thumb::-moz-range-track { background: transparent; }
+.range-thumb::-webkit-slider-thumb {
+  pointer-events: all;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid #3b82f6;
+  cursor: pointer;
+  -webkit-appearance: none;
+  box-shadow: 0 1px 6px rgba(59,130,246,0.35);
+}
+.range-thumb::-moz-range-thumb {
+  pointer-events: all;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 1px 6px rgba(59,130,246,0.35);
+}
+.dark .range-thumb::-webkit-slider-thumb { background: #18181b; }
+.dark .range-thumb::-moz-range-thumb     { background: #18181b; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
