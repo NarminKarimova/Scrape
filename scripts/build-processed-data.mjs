@@ -410,6 +410,7 @@ function buildBreakdowns(rows, dims, metric) {
       .map(([key, values]) => ({
         key,
         medianPrice: median(values),
+        averagePrice: robustAdjustedMean([values]).cleanedAverage,
         count: values.length,
       }))
       .filter((point) => point.count >= 5)
@@ -421,6 +422,7 @@ function buildBreakdowns(rows, dims, metric) {
         key: bucket.key,
         period: bucket.period,
         medianPrice: median(bucket.values),
+        averagePrice: robustAdjustedMean([bucket.values]).cleanedAverage,
         count: bucket.values.length,
       }))
       .filter((point) => point.count >= 5)

@@ -13,6 +13,7 @@ export type SummaryTrendPoint = {
 export type SummaryBreakdownPoint = {
   key: string;
   medianPrice: number;
+  averagePrice: number;
   count: number;
   period?: string;
 };
