@@ -137,6 +137,16 @@ type TrendDatum = TrendPoint & Record<string, string | number>;
 const trendAverageKey = (group: string) => `__average__${group}`;
 const trendAverageRetainedKey = (group: string) => `__average_retained__${group}`;
 const trendAverageExcludedKey = (group: string) => `__average_excluded__${group}`;
+const splitTrendColors = [
+  "#2563eb", // blue
+  "#dc2626", // red
+  "#16a34a", // green
+  "#9333ea", // purple
+  "#0891b2", // cyan
+  "#ca8a04", // amber
+  "#db2777", // pink
+  "#4f46e5", // indigo
+];
 
 type ListingCountBasePoint = {
   period: string;
@@ -2359,8 +2369,11 @@ export default function Home() {
   const priceTrendDomain = useMemo(
     () => {
       const allValues = trend.flatMap((point) => {
-        const vals = [point.medianPrice, point.cleanedAverage];
-        if (splitTrend) {
+        const showSplitGroups = splitTrend && trendGroups.length > 0;
+        const vals = showSplitGroups
+          ? []
+          : [point.medianPrice, point.cleanedAverage];
+        if (showSplitGroups) {
           for (const group of trendGroups) {
             const v = (point as TrendDatum)[group];
             if (typeof v === "number") vals.push(v);
@@ -3893,14 +3906,14 @@ export default function Home() {
                         activeDot={{ r: 6 }}
                       />
                     )}
-                    {splitTrend && trendGroups.length > 0 && (
+                    {(!splitTrend || trendGroups.length === 0) && (
                       <Line
                         type="monotone"
-                        dataKey="medianPrice"
-                        name={t("aggregatedMedian") || "Median"}
-                        stroke="#94a3b8"
-                        strokeWidth={2}
-                        strokeDasharray="4 4"
+                        dataKey="cleanedAverage"
+                        name={t("cleanedAverage")}
+                        stroke="#f59e0b"
+                        strokeWidth={2.25}
+                        strokeDasharray="6 4"
                         label={(props: ChartLabelProps) => {
                           if (
                             typeof props.x !== "number" ||
@@ -3909,11 +3922,12 @@ export default function Home() {
                           ) {
                             return null;
                           }
+                          const offsetY = (props.index ?? 0) % 2 === 0 ? -12 : 16;
                           return (
                             <text
                               x={props.x}
-                              y={props.y - 10}
-                              fill={chartColors.tick}
+                              y={props.y + offsetY}
+                              fill="#f59e0b"
                               fontSize={9}
                               textAnchor="middle"
                               dominantBaseline="middle"
@@ -3924,51 +3938,12 @@ export default function Home() {
                             </text>
                           );
                         }}
-                        dot={{ r: 3, fill: "#94a3b8", strokeWidth: 0 }}
-                        activeDot={{ r: 4 }}
+                        dot={{ r: 3.5, fill: "#f59e0b", strokeWidth: 0 }}
+                        activeDot={{ r: 5 }}
                       />
                     )}
-                    <Line
-                      type="monotone"
-                      dataKey="cleanedAverage"
-                      name={t("cleanedAverage")}
-                      stroke="#f59e0b"
-                      strokeWidth={2.25}
-                      strokeDasharray="6 4"
-                      label={(props: ChartLabelProps) => {
-                        if (
-                          typeof props.x !== "number" ||
-                          typeof props.y !== "number" ||
-                          typeof props.value !== "number"
-                        ) {
-                          return null;
-                        }
-                        const offsetY = (props.index ?? 0) % 2 === 0 ? -12 : 16;
-                        return (
-                          <text
-                            x={props.x}
-                            y={props.y + offsetY}
-                            fill="#f59e0b"
-                            fontSize={9}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            {project === "Markets" || project === "Birmarket"
-                              ? fmtFixed(props.value, priceFractionDigits)
-                              : fmtNum(props.value)}
-                          </text>
-                        );
-                      }}
-                      dot={{ r: 3.5, fill: "#f59e0b", strokeWidth: 0 }}
-                      activeDot={{ r: 5 }}
-                    />
                     {splitTrend && trendGroups.map((group, idx) => {
-                      const colors = [
-                        "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e",
-                        "#10b981", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
-                        "#8b5cf6", "#d946ef", "#ec4899", "#f43f5e"
-                      ];
-                      const color = colors[idx % colors.length];
+                      const color = splitTrendColors[idx % splitTrendColors.length];
                       return (
                         <Line
                           key={group}
@@ -4007,12 +3982,7 @@ export default function Home() {
                       );
                     })}
                     {splitTrend && trendGroups.map((group, idx) => {
-                      const colors = [
-                        "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e",
-                        "#10b981", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
-                        "#8b5cf6", "#d946ef", "#ec4899", "#f43f5e"
-                      ];
-                      const color = colors[idx % colors.length];
+                      const color = splitTrendColors[idx % splitTrendColors.length];
                       return (
                         <Line
                           key={`average-${group}`}
@@ -4325,12 +4295,7 @@ export default function Home() {
                       />
                     )}
                     {splitTrend && trendGroups.map((group, idx) => {
-                      const colors = [
-                        "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e",
-                        "#10b981", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
-                        "#8b5cf6", "#d946ef", "#ec4899", "#f43f5e"
-                      ];
-                      const color = colors[idx % colors.length];
+                      const color = splitTrendColors[idx % splitTrendColors.length];
                       return (
                         <Line
                           key={group}
