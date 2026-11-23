@@ -123,8 +123,8 @@ type BirmarketCategoryProfile = {
   shortCategory: string;
   count: number;
   countLabel: string;
-  medianPrice: number;
-  medianDiscount: number;
+  averagePrice: number;
+  averageDiscount: number;
   noDiscount: number;
   under10: number;
   tenTo24: number;
@@ -254,6 +254,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     assortmentByCategory: "Listing mix — top categories",
     discountStructure: "Discount structure by category",
     medianDiscount: "Median discount",
+    averageDiscount: "Average discount",
     listingsLabel: "Listings",
     noDiscountBand: "No discount",
     under10Band: "1–9%",
@@ -284,6 +285,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     assortmentByCategory: "Elan strukturu — əsas kateqoriyalar",
     discountStructure: "Kateqoriya üzrə endirim strukturu",
     medianDiscount: "Median endirim",
+    averageDiscount: "Orta endirim",
     listingsLabel: "Elanlar",
     noDiscountBand: "Endirimsiz",
     under10Band: "1–9%",
@@ -458,6 +460,11 @@ function withPercentChange(
         idx === 0 ? labels.noPreviousPeriod : formatLabel(averagePctChange),
     };
   });
+}
+
+function mean(values: number[]): number {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function buildChartDomain(
@@ -974,8 +981,8 @@ function BirmarketMatrixTooltip({
       }`}
     >
       <p className="mb-1.5 max-w-64 font-semibold">{point.category}</p>
-      <p>{lang === "az" ? "Median qiymət" : "Median price"}: {fmtFixed(point.medianPrice, 2)} ₼</p>
-      <p>{lang === "az" ? "Median endirim" : "Median discount"}: {point.medianDiscount.toFixed(1)}%</p>
+      <p>{lang === "az" ? "Orta qiymət" : "Average price"}: {fmtFixed(point.averagePrice, 2)} ₼</p>
+      <p>{lang === "az" ? "Orta endirim" : "Average discount"}: {point.averageDiscount.toFixed(1)}%</p>
       <p>{lang === "az" ? "Elanlar" : "Listings"}: {fmtNum(point.count)}</p>
     </div>
   );
@@ -2102,8 +2109,8 @@ export default function Home() {
         shortCategory: category.length > 22 ? `${category.slice(0, 21)}…` : category,
         count,
         countLabel: `${fmtNum(count)} · ${((count / totalRows) * 100).toFixed(1)}%`,
-        medianPrice: Number(median(bucket.prices).toFixed(2)),
-        medianDiscount: Number(median(bucket.discounts).toFixed(1)),
+        averagePrice: Number(mean(bucket.prices).toFixed(2)),
+        averageDiscount: Number(mean(bucket.discounts).toFixed(1)),
         noDiscount: percentage(bucket.bands[0]),
         under10: percentage(bucket.bands[1]),
         tenTo24: percentage(bucket.bands[2]),
@@ -4623,8 +4630,8 @@ export default function Home() {
                           <CartesianGrid stroke={chartColors.grid} strokeDasharray="3 3" />
                           <XAxis
                             type="number"
-                            dataKey="medianPrice"
-                            name={t("medianPrice")}
+                            dataKey="averagePrice"
+                            name={t("cleanedAverage")}
                             unit=" ₼"
                             stroke={chartColors.axis}
                             tick={{ fill: chartColors.tick, fontSize: 10 }}
@@ -4632,7 +4639,7 @@ export default function Home() {
                             tickLine={false}
                             tickFormatter={(value) => fmtFixed(Number(value), 0)}
                             label={{
-                              value: t("medianPrice"),
+                              value: t("cleanedAverage"),
                               position: "insideBottom",
                               offset: -14,
                               fill: chartColors.tick,
@@ -4641,8 +4648,8 @@ export default function Home() {
                           />
                           <YAxis
                             type="number"
-                            dataKey="medianDiscount"
-                            name={t("medianDiscount")}
+                            dataKey="averageDiscount"
+                            name={t("averageDiscount")}
                             unit="%"
                             stroke={chartColors.axis}
                             tick={{ fill: chartColors.tick, fontSize: 10 }}
@@ -4771,11 +4778,11 @@ export default function Home() {
                             name ?? "",
                           ]}
                         />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Legend itemSorter={null} wrapperStyle={{ fontSize: 10 }} />
                         <Bar dataKey="noDiscount" name={t("noDiscountBand")} stackId="discount" fill="#94a3b8" />
-                        <Bar dataKey="under10" name={t("under10Band")} stackId="discount" fill="#38bdf8" />
-                        <Bar dataKey="tenTo24" name="10–24%" stackId="discount" fill="#6366f1" />
-                        <Bar dataKey="twentyFiveTo49" name="25–49%" stackId="discount" fill="#a855f7" />
+                        <Bar dataKey="under10" name={t("under10Band")} stackId="discount" fill="#3b82f6" />
+                        <Bar dataKey="tenTo24" name="10–24%" stackId="discount" fill="#7c3aed" />
+                        <Bar dataKey="twentyFiveTo49" name="25–49%" stackId="discount" fill="#c084fc" />
                         <Bar
                           dataKey="fiftyPlus"
                           name="50%+"
