@@ -134,6 +134,10 @@ type BirmarketCategoryProfile = {
 
 type TrendDatum = TrendPoint & Record<string, string | number>;
 
+const trendAverageKey = (group: string) => `__average__${group}`;
+const trendAverageRetainedKey = (group: string) => `__average_retained__${group}`;
+const trendAverageExcludedKey = (group: string) => `__average_excluded__${group}`;
+
 type ListingCountBasePoint = {
   period: string;
   dateLabel: string;
@@ -2177,7 +2181,11 @@ export default function Home() {
         const grpMap = byPeriodAndGroup.get(period);
         if (grpMap) {
           for (const [grp, grpVals] of grpMap.entries()) {
+            const groupAverage = robustAdjustedMean([grpVals]);
             base[grp] = median(grpVals);
+            base[trendAverageKey(grp)] = groupAverage.cleanedAverage;
+            base[trendAverageRetainedKey(grp)] = groupAverage.retainedCount;
+            base[trendAverageExcludedKey(grp)] = groupAverage.excludedCount;
           }
         }
         return base as TrendDatum;
@@ -2356,6 +2364,8 @@ export default function Home() {
           for (const group of trendGroups) {
             const v = (point as TrendDatum)[group];
             if (typeof v === "number") vals.push(v);
+            const average = (point as TrendDatum)[trendAverageKey(group)];
+            if (typeof average === "number") vals.push(average);
           }
         }
         return vals;
@@ -3820,11 +3830,25 @@ export default function Home() {
                     <Tooltip
                       {...shared}
                       formatter={(v: number | undefined, name: string | undefined, entry) => {
-                        const point = entry.payload as TrendPoint | undefined;
+                        const point = entry.payload as TrendDatum | undefined;
                         const baseName = name ?? "";
+                        const averageSuffix = ` — ${t("cleanedAverage")}`;
+                        const splitAverageGroup = baseName.endsWith(averageSuffix)
+                          ? baseName.slice(0, -averageSuffix.length)
+                          : null;
+                        const retainedCount = splitAverageGroup && point
+                          ? point[trendAverageRetainedKey(splitAverageGroup)]
+                          : point?.retainedCount;
+                        const excludedCount = splitAverageGroup && point
+                          ? point[trendAverageExcludedKey(splitAverageGroup)]
+                          : point?.excludedCount;
+                        const isAverage =
+                          baseName === t("cleanedAverage") || splitAverageGroup !== null;
                         const detail =
-                          baseName === t("cleanedAverage") && point
-                            ? `${baseName} · ${fmtNum(point.retainedCount)} ${t("retained")}, ${fmtNum(point.excludedCount)} ${t("excluded")}`
+                          isAverage &&
+                          typeof retainedCount === "number" &&
+                          typeof excludedCount === "number"
+                            ? `${baseName} · ${fmtNum(retainedCount)} ${t("retained")}, ${fmtNum(excludedCount)} ${t("excluded")}`
                             : baseName;
                         return [fmtFixed(v ?? 0, priceFractionDigits), detail];
                       }}
@@ -3911,6 +3935,30 @@ export default function Home() {
                       stroke="#f59e0b"
                       strokeWidth={2.25}
                       strokeDasharray="6 4"
+                      label={(props: ChartLabelProps) => {
+                        if (
+                          typeof props.x !== "number" ||
+                          typeof props.y !== "number" ||
+                          typeof props.value !== "number"
+                        ) {
+                          return null;
+                        }
+                        const offsetY = (props.index ?? 0) % 2 === 0 ? -12 : 16;
+                        return (
+                          <text
+                            x={props.x}
+                            y={props.y + offsetY}
+                            fill="#f59e0b"
+                            fontSize={9}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                          >
+                            {project === "Markets" || project === "Birmarket"
+                              ? fmtFixed(props.value, priceFractionDigits)
+                              : fmtNum(props.value)}
+                          </text>
+                        );
+                      }}
                       dot={{ r: 3.5, fill: "#f59e0b", strokeWidth: 0 }}
                       activeDot={{ r: 5 }}
                     />
@@ -3926,7 +3974,7 @@ export default function Home() {
                           key={group}
                           type="monotone"
                           dataKey={group}
-                          name={group}
+                          name={`${group} — ${t("medianMetric")}`}
                           stroke={color}
                           strokeWidth={2}
                           label={(props: ChartLabelProps) => {
@@ -3938,6 +3986,51 @@ export default function Home() {
                               return null;
                             }
                             const offsetY = -10 - (idx % 3) * 9;
+                            return (
+                              <text
+                                x={props.x}
+                                y={props.y + offsetY}
+                                fill={color}
+                                fontSize={9}
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                              >
+                                {project === "Markets" || project === "Birmarket"
+                                  ? fmtFixed(props.value, priceFractionDigits)
+                                  : fmtNum(props.value)}
+                              </text>
+                            );
+                          }}
+                          dot={{ r: 3, fill: color, strokeWidth: 0 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      );
+                    })}
+                    {splitTrend && trendGroups.map((group, idx) => {
+                      const colors = [
+                        "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e",
+                        "#10b981", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+                        "#8b5cf6", "#d946ef", "#ec4899", "#f43f5e"
+                      ];
+                      const color = colors[idx % colors.length];
+                      return (
+                        <Line
+                          key={`average-${group}`}
+                          type="monotone"
+                          dataKey={trendAverageKey(group)}
+                          name={`${group} — ${t("cleanedAverage")}`}
+                          stroke={color}
+                          strokeWidth={2}
+                          strokeDasharray="6 4"
+                          label={(props: ChartLabelProps) => {
+                            if (
+                              typeof props.x !== "number" ||
+                              typeof props.y !== "number" ||
+                              typeof props.value !== "number"
+                            ) {
+                              return null;
+                            }
+                            const offsetY = 12 + (idx % 3) * 9;
                             return (
                               <text
                                 x={props.x}
