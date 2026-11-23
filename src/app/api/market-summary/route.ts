@@ -5,7 +5,7 @@ import { marketAiDebugLog } from "@/lib/market-ai-debug";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
 const GEMINI_STREAM_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent`;
 
 function compact(value: unknown, limit = 18_000): string {

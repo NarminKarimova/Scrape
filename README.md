@@ -117,8 +117,14 @@ Optional Gemini settings:
 
 ```text
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-3.5-flash
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
+
+For Vercel, add `GEMINI_API_KEY` as a secret in Project Settings >
+Environment Variables. Add `GEMINI_MODEL=gemini-3.1-flash-lite` there only if
+you want to override the application's default model. Apply the variables to
+Production (and Preview if needed), then redeploy. Never commit the real API
+key to `.env.example`.
 
 ## Useful Commands
 
